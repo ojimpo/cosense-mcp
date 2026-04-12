@@ -1,6 +1,39 @@
 # CLAUDE.md
 
-MCP server for Cosense (Scrapbox). Also works as a CLI.
+worldnine/scrapbox-cosense-mcp のフォーク。Claude.ai Custom Connector対応（HTTP transport）を追加。
+
+## このフォークの追加分
+
+- `src/http-server.ts` — Express + StreamableHTTPServerTransport（HTTP transportの本体）
+- `src/index.ts` — `TRANSPORT=http` でHTTPモード、デフォルトはstdio（フォーク元互換）
+- `Dockerfile` — node:22-slim マルチステージビルド
+- `docker-compose.yml` — `.env`で環境変数管理、ポート4100で稼働中
+- デフォルトformatを`scrapbox`に変更（`create-page.ts`、`insert-lines.ts`）
+- tool descriptionにCosense記法ガイドを埋め込み（リンク、見出しサイズ、インデント等）
+- 不明セッションに404を返してクライアントの再接続を誘導
+
+## デプロイ状況
+
+- Docker (port 4100) → Cloudflare Tunnel → `cosense-mcp.ojimpo.com`
+- Claude.ai Custom Connectorで接続中（認証なし）
+- CF Tunnel設定: `/etc/cloudflared/config.yml`（sudo必要）
+
+## 変更時の手順
+
+```bash
+npm run build
+docker compose down && docker compose build && docker compose up -d
+```
+
+tool descriptionを変更した場合、Claude.ai側でコネクタを削除→再追加するとtools/listが再取得される。
+ただしformatデフォルト等のハンドラー側ロジック変更はサーバー再起動のみで反映。
+
+## フォーク元の更新取り込み
+
+```bash
+git fetch upstream
+git merge upstream/main
+```
 
 ## Commands
 
