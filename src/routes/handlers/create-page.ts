@@ -29,10 +29,11 @@ export async function handleCreatePage(
 
     let convertedBody: string | undefined;
     if (body) {
-      if (params.format === 'scrapbox') {
-        convertedBody = body;
-      } else {
+      if (params.format === 'markdown') {
         convertedBody = await convertMarkdownToScrapbox(body, { convertNumberedLists });
+      } else {
+        // Default: scrapbox — pass through as-is
+        convertedBody = body;
       }
     }
 

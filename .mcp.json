@@ -1,12 +1,3 @@
 {
-  "mcpServers": {
-    "scrapbox-cosense": {
-      "command": "npx",
-      "args": ["-y", "scrapbox-cosense-mcp"],
-      "env": {
-        "COSENSE_PROJECT_NAME": "",
-        "COSENSE_SID": ""
-      }
-    }
-  }
+  "mcpServers": {}
 }

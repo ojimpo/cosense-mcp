@@ -90,10 +90,54 @@ Add to your config file:
 }
 ```
 
+### Claude.ai (Custom Connector via HTTP Transport)
+
+For Claude.ai integration, run the server with HTTP transport instead of stdio.
+
+#### Docker (Recommended)
+
+```bash
+git clone https://github.com/ojimpo/scrapbox-cosense-mcp.git
+cd scrapbox-cosense-mcp
+cp .env.example .env
+# Edit .env with your settings
+docker compose up -d
+```
+
+The server listens on `http://0.0.0.0:3000/mcp` by default.
+
+#### Direct
+
+```bash
+TRANSPORT=http COSENSE_PROJECT_NAME=your_project COSENSE_SID=your_sid node build/index.js
+```
+
+#### Authentication
+
+Set `MCP_AUTH_TOKEN` to protect the HTTP endpoint with Bearer token auth:
+
+```bash
+MCP_AUTH_TOKEN=your-secret-token
+```
+
+Requests must include `Authorization: Bearer your-secret-token`.
+
+#### Cloudflare Tunnel (Public Access for Claude.ai)
+
+To expose the server to Claude.ai via Cloudflare Tunnel:
+
+```bash
+cloudflared tunnel create cosense-mcp
+cloudflared tunnel route dns cosense-mcp mcp.yourdomain.com
+cloudflared tunnel run --url http://localhost:3000 cosense-mcp
+```
+
+Then configure the Claude.ai Custom Connector with `https://mcp.yourdomain.com/mcp`.
+
 ### Build from Source
 
 ```bash
-git clone https://github.com/worldnine/scrapbox-cosense-mcp.git
+git clone https://github.com/ojimpo/scrapbox-cosense-mcp.git
 cd scrapbox-cosense-mcp
 npm install && npm run build
 ```
@@ -106,6 +150,14 @@ npm install && npm run build
 |----------|-------------|
 | `COSENSE_PROJECT_NAME` | Your Scrapbox/Cosense project name |
 | `COSENSE_SID` | Session ID (`connect.sid` cookie) for private projects — [How to get it](./docs/authentication.md) |
+
+### HTTP Transport
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TRANSPORT` | `stdio` | Transport mode: `stdio` (Claude Desktop) or `http` (Claude.ai) |
+| `PORT` | `3000` | HTTP server port (only when `TRANSPORT=http`) |
+| `MCP_AUTH_TOKEN` | — | Bearer token for HTTP auth (optional) |
 
 ### Optional
 

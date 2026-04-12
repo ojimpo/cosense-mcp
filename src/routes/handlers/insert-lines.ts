@@ -33,10 +33,11 @@ export async function handleInsertLines(
     const convertNumberedLists = process.env.COSENSE_CONVERT_NUMBERED_LISTS === 'true';
 
     let convertedText: string;
-    if (params.format === 'scrapbox') {
-      convertedText = params.text;
-    } else {
+    if (params.format === 'markdown') {
       convertedText = await convertMarkdownToScrapbox(params.text, { convertNumberedLists });
+    } else {
+      // Default: scrapbox — pass through as-is
+      convertedText = params.text;
     }
 
     // WebSocket経由でページを更新

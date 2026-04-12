@@ -1,0 +1,12 @@
+services:
+  cosense-mcp:
+    build: .
+    ports:
+      - "4100:4100"
+    environment:
+      - TRANSPORT=http
+      - PORT=4100
+      - COSENSE_PROJECT_NAME=${COSENSE_PROJECT_NAME}
+      - COSENSE_SID=${COSENSE_SID}
+      - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN}
+    restart: unless-stopped
