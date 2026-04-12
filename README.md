@@ -1,224 +1,131 @@
-# scrapbox-cosense-mcp
+# cosense-mcp — Claude.aiからCosenseを読み書きするMCPサーバー
 
-[日本語ドキュメント / Japanese](./docs/README_ja.md)
+[worldnine/scrapbox-cosense-mcp](https://github.com/worldnine/scrapbox-cosense-mcp) のフォークに、**Claude.ai Custom Connector対応（HTTP transport）** を追加したもの。
 
-## Overview
+## このフォークの動機
 
-MCP server for [Cosense (formerly Scrapbox)](https://cosen.se).
+Cosenseは自分の思考の外部記憶として使っているが、Claude.aiとの対話結果をCosenseに書き込む体験がずっと悪かった。
 
-| Tool | Description | Auth Required |
-|------|-------------|:---:|
-| `get_page` | Get page content, metadata, and links | For private projects |
-| `list_pages` | Browse pages with sorting and pagination (max 1000) | For private projects |
-| `search_pages` | Full-text search with keyword highlighting (max 100 results) | For private projects |
-| `create_page` | Create a page via WebSocket API with Markdown/Scrapbox body | Yes |
-| `get_page_url` | Generate direct URL for a page | No |
-| `insert_lines` | Insert text after a specified line in a page | Yes |
-| `get_smart_context` | Get a page and its linked pages (1-hop/2-hop) in AI-optimized format | Yes |
+- コードブロックのエスケープがしばしば失敗する
+- リンクを安定して付けてくれないので手動補完が必要
+- 本文がチャット画面にダーッと流れて見にくい
+- ちょっと追記するたびにまた本文が流れる
 
-`create_page` and `insert_lines` support a `format` parameter (`"markdown"` or `"scrapbox"`) to control content conversion.
+MCP化すればこれらが構造的に解決する。tool callの折りたたみと結果サマリだけが表示され、本文はチャットを汚さない。Todoistでタスクを追加した時と同じ体験になる。
 
-## Quick Start
+## フォーク元との違い
 
-### Desktop Extension (.mcpb) — Easiest
+[worldnine/scrapbox-cosense-mcp](https://github.com/worldnine/scrapbox-cosense-mcp) は非常に完成度の高いMCPサーバーだが、**stdio transport**（Claude Desktop / Claude Code向け）のみ対応。Claude.aiのCustom Connectorは**HTTP transport（Streamable HTTP）** を要求するため、そのままでは使えない。
 
-1. Download `scrapbox-cosense-mcp.mcpb` from [GitHub Releases](https://github.com/worldnine/scrapbox-cosense-mcp/releases)
-2. Double-click — Claude Desktop opens an install dialog
-3. Enter your project name (and Session ID for private projects)
+このフォークで追加したもの:
 
-### Claude Code Plugin
+| 追加項目 | 内容 |
+|----------|------|
+| **HTTP transport** | Express + `StreamableHTTPServerTransport`。`TRANSPORT=http`で起動 |
+| **セッション管理** | 不明セッションに404を返してクライアントの再接続を誘導 |
+| **Bearer token認証** | `MCP_AUTH_TOKEN`でオプショナルな認証 |
+| **Cosense記法デフォルト化** | `format`のデフォルトを`scrapbox`に変更。tool descriptionにCosense記法ガイドを埋め込み |
+| **Docker / CF Tunnel** | Dockerfile、docker-compose.yml、Cloudflare Tunnel経由での公開手順 |
 
-1. Add the marketplace:
-   ```
-   /plugin marketplace add worldnine/scrapbox-cosense-mcp
-   ```
-2. Install the plugin:
-   ```
-   /plugin install scrapbox-cosense@worldnine-scrapbox-cosense-mcp
-   ```
-   Installs globally by default. Use `--scope project` or `--scope local` for other scopes.
-3. Set environment variables in your settings file:
-   ```json
-   {
-     "env": {
-       "COSENSE_PROJECT_NAME": "your_project_name",
-       "COSENSE_SID": "your_sid"
-     }
-   }
-   ```
-   | File | Scope |
-   |------|-------|
-   | `~/.claude/settings.json` | All projects (global) |
-   | `.claude/settings.local.json` | This project only (gitignored) |
+フォーク元のstdio transportもそのまま残してあるので、Claude Desktop / Claude Codeからも引き続き使える。
 
-The plugin includes MCP server configuration and a `/cosense` skill for CLI operations.
+## 構成
 
-### Claude Code (Manual MCP Setup)
-
-If you prefer manual configuration over the plugin:
-
-```bash
-claude mcp add scrapbox-cosense-mcp \
-  -e COSENSE_PROJECT_NAME=your_project \
-  -e COSENSE_SID=your_sid \
-  -- npx -y scrapbox-cosense-mcp
+```
+Claude.ai → HTTPS → Cloudflare Tunnel → Docker Container (Express + MCP)
+                                              |               |
+                                         REST API        WebSocket
+                                         (読み取り)       (書き込み)
+                                              |               |
+                                         Cosense API (scrapbox.io)
 ```
 
-### Claude Desktop / Other MCP Clients
+- Cosense REST APIは**読み取り専用**。書き込みはWebSocket（socket.io）経由で`@cosense/std`の`patch()`を使用
+- `connect.sid` cookie（`COSENSE_SID`）で認証
 
-Add to your config file:
+## ツール一覧
 
-| Client | Config File |
-|--------|-------------|
-| Claude Desktop (macOS) | `~/Library/Application Support/Claude/claude_desktop_config.json` |
-| Claude Desktop (Windows) | `%APPDATA%/Claude/claude_desktop_config.json` |
-| Cursor | `.cursor/mcp.json` (project root) |
-| Windsurf | `~/.codeium/windsurf/mcp_config.json` |
+| Tool | 説明 | 認証 |
+|------|------|:---:|
+| `get_page` | ページ内容・メタデータ・リンク取得 | 非公開PJのみ |
+| `list_pages` | ソート・ページネーション付き一覧（最大1000件） | 非公開PJのみ |
+| `search_pages` | 全文検索（最大100件） | 非公開PJのみ |
+| `create_page` | 新規ページ作成（WebSocket経由） | 必須 |
+| `insert_lines` | 指定行の後にテキスト挿入 | 必須 |
+| `get_smart_context` | ページと関連ページ（1-2ホップ）をまとめて取得 | 必須 |
+| `get_page_url` | ページURLの生成 | 不要 |
 
-```json
-{
-  "mcpServers": {
-    "scrapbox-cosense-mcp": {
-      "command": "npx",
-      "args": ["-y", "scrapbox-cosense-mcp"],
-      "env": {
-        "COSENSE_PROJECT_NAME": "your_project_name",
-        "COSENSE_SID": "your_sid"
-      }
-    }
-  }
-}
-```
+`create_page`と`insert_lines`はデフォルトでCosense記法。tool descriptionにCosense記法のルール（リンク、見出し、インデント等）を埋め込んであるので、Claude.aiは指示なしでも`[リンク]`を積極的に使い、適切な見出しサイズで書く。
 
-### Claude.ai (Custom Connector via HTTP Transport)
+## セットアップ
 
-For Claude.ai integration, run the server with HTTP transport instead of stdio.
-
-#### Docker (Recommended)
+### Claude.ai（Custom Connector + Docker）
 
 ```bash
 git clone https://github.com/ojimpo/scrapbox-cosense-mcp.git
 cd scrapbox-cosense-mcp
 cp .env.example .env
-# Edit .env with your settings
+# .env を編集: COSENSE_PROJECT_NAME, COSENSE_SID を設定
 docker compose up -d
 ```
 
-The server listens on `http://0.0.0.0:3000/mcp` by default.
+サーバーは `http://0.0.0.0:3000/mcp` で待ち受ける（PORTは.envで変更可能）。
 
-#### Direct
-
-```bash
-TRANSPORT=http COSENSE_PROJECT_NAME=your_project COSENSE_SID=your_sid node build/index.js
-```
-
-#### Authentication
-
-Set `MCP_AUTH_TOKEN` to protect the HTTP endpoint with Bearer token auth:
-
-```bash
-MCP_AUTH_TOKEN=your-secret-token
-```
-
-Requests must include `Authorization: Bearer your-secret-token`.
-
-#### Cloudflare Tunnel (Public Access for Claude.ai)
-
-To expose the server to Claude.ai via Cloudflare Tunnel:
+外部公開にはCloudflare Tunnelを使う:
 
 ```bash
 cloudflared tunnel create cosense-mcp
 cloudflared tunnel route dns cosense-mcp mcp.yourdomain.com
-cloudflared tunnel run --url http://localhost:3000 cosense-mcp
+# cloudflared config.yml の ingress に追加:
+#   - hostname: mcp.yourdomain.com
+#     service: http://localhost:3000
 ```
 
-Then configure the Claude.ai Custom Connector with `https://mcp.yourdomain.com/mcp`.
+Claude.aiでの接続:
+1. Settings → Connectors → +
+2. 名前: `Cosense`、URL: `https://mcp.yourdomain.com/mcp`
+3. 追加
 
-### Build from Source
+### Claude Desktop / Claude Code（stdio）
+
+フォーク元と同じ方法で使える。詳細は[worldnine/scrapbox-cosense-mcp](https://github.com/worldnine/scrapbox-cosense-mcp)を参照。
 
 ```bash
-git clone https://github.com/ojimpo/scrapbox-cosense-mcp.git
-cd scrapbox-cosense-mcp
-npm install && npm run build
+claude mcp add cosense \
+  -e COSENSE_PROJECT_NAME=your_project \
+  -e COSENSE_SID=your_sid \
+  -- npx -y scrapbox-cosense-mcp
 ```
 
-## Configuration
+## 環境変数
 
-### Required
+### 必須
 
-| Variable | Description |
-|----------|-------------|
-| `COSENSE_PROJECT_NAME` | Your Scrapbox/Cosense project name |
-| `COSENSE_SID` | Session ID (`connect.sid` cookie) for private projects — [How to get it](./docs/authentication.md) |
+| 変数 | 説明 |
+|------|------|
+| `COSENSE_PROJECT_NAME` | 対象プロジェクト名 |
+| `COSENSE_SID` | `connect.sid` cookie値（[取得方法](./docs/authentication.md)） |
 
-### HTTP Transport
+### HTTP transport
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `TRANSPORT` | `stdio` | Transport mode: `stdio` (Claude Desktop) or `http` (Claude.ai) |
-| `PORT` | `3000` | HTTP server port (only when `TRANSPORT=http`) |
-| `MCP_AUTH_TOKEN` | — | Bearer token for HTTP auth (optional) |
+| 変数 | デフォルト | 説明 |
+|------|-----------|------|
+| `TRANSPORT` | `stdio` | `stdio`（Claude Desktop）か `http`（Claude.ai） |
+| `PORT` | `3000` | HTTPポート（`TRANSPORT=http`時のみ） |
+| `MCP_AUTH_TOKEN` | — | Bearer token認証（任意） |
 
-### Optional
+### その他
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `API_DOMAIN` | `scrapbox.io` | API domain |
-| `SERVICE_LABEL` | `cosense (scrapbox)` | Display name in tool descriptions |
-| `COSENSE_PAGE_LIMIT` | `100` | Initial page fetch limit (1–1000) |
-| `COSENSE_SORT_METHOD` | `updated` | Initial sort: updated, created, accessed, linked, views, title |
-| `COSENSE_TOOL_SUFFIX` | — | Tool name suffix for multiple instances (e.g. `main` → `get_page_main`) |
-| `COSENSE_CONVERT_NUMBERED_LISTS` | `false` | Convert numbered lists to bullet lists in Markdown conversion |
-| `COSENSE_EXCLUDE_PINNED` | `false` | Exclude pinned pages from initial resource list |
+| 変数 | デフォルト | 説明 |
+|------|-----------|------|
+| `COSENSE_PAGE_LIMIT` | `100` | 初期ページ取得数（1–1000） |
+| `COSENSE_SORT_METHOD` | `updated` | ソート方法 |
+| `COSENSE_EXCLUDE_PINNED` | `false` | ピン留めページを除外 |
 
-## CLI Usage
+## ライセンス
 
-The same binary also works as a standalone CLI:
+MIT（フォーク元と同じ）
 
-```bash
-scrapbox-cosense-mcp get "Page Title"
-scrapbox-cosense-mcp search "keyword"
-scrapbox-cosense-mcp list --sort=updated --limit=20
-scrapbox-cosense-mcp create "New Page" --body="Markdown content"
-scrapbox-cosense-mcp insert "Page" --after="target line" --text="new text"
-scrapbox-cosense-mcp url "Page Title"
-```
+## クレジット
 
-| Flag | Description |
-|------|-------------|
-| `--compact` | Token-efficient compact output (recommended for AI agents) |
-| `--project=NAME` | Override project name |
-| `--json` | Output as JSON |
-| `--help` | Show help (supports `<command> --help` for details) |
-
-## Multiple Projects
-
-All tools accept an optional `projectName` parameter to target a different project from a single server. For multiple private projects with different credentials, run separate server instances with `COSENSE_TOOL_SUFFIX`.
-
-See [docs/multiple-projects.md](./docs/multiple-projects.md) for detailed configuration examples.
-
-## Development
-
-| Command | Description |
-|---------|-------------|
-| `npm run build` | Build (TypeScript → JavaScript) |
-| `npm run watch` | Auto-rebuild during development |
-| `npm test` | Run test suite |
-| `npm run lint` | Run ESLint |
-| `npm run inspector` | Debug with MCP Inspector |
-
-### Contributing
-
-1. Create a feature branch from `main`
-2. Add tests for your changes
-3. Run `npm run lint && npm test`
-4. Create a pull request — CI runs automatically
-
-## License
-
-MIT
-
----
-
-[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/worldnine-scrapbox-cosense-mcp-badge.png)](https://mseep.ai/app/worldnine-scrapbox-cosense-mcp)
-<a href="https://glama.ai/mcp/servers/8huixkwpe2"><img width="380" height="200" src="https://glama.ai/mcp/servers/8huixkwpe2/badge" alt="Scrapbox Cosense Server MCP server" /></a>
+このフォークは [worldnine/scrapbox-cosense-mcp](https://github.com/worldnine/scrapbox-cosense-mcp) をベースにしています。フォーク元の充実した実装（7ツール、WebSocket書き込み、142+テスト）がなければ、このプロジェクトは成り立ちませんでした。
