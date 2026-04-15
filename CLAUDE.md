@@ -47,7 +47,7 @@ npm run inspector    # Debug with MCP Inspector
 
 ## Architecture
 
-### Tools (7)
+### Tools (9)
 
 | Tool | Description | Auth |
 |---|---|---|
@@ -57,11 +57,13 @@ npm run inspector    # Debug with MCP Inspector
 | `create_page` | Create new page. Rejects if page already exists | SID |
 | `get_page_url` | Generate URL from page title | - |
 | `insert_lines` | Insert text after a target line (exact match). Appends to end if not found | SID |
+| `replace_lines` | Replace a line (exact unique match). Supports 1→N line expansion | SID |
+| `delete_lines` | Delete a line (exact unique match) | SID |
 | `get_smart_context` | Get page + linked pages (1-hop/2-hop) in AI-optimized format | SID |
 
 ### CLI
 
-All tools are also available as CLI subcommands (`get`, `list`, `search`, `create`, `url`, `insert`, `context`). Run `scrapbox-cosense-mcp <command> --help` for usage. Key flags:
+All tools are also available as CLI subcommands (`get`, `list`, `search`, `create`, `url`, `insert`, `replace`, `delete`, `context`). Run `scrapbox-cosense-mcp <command> --help` for usage. Key flags:
 
 - `--compact` — Token-efficient output (85% smaller for list)
 - `--json` — JSON output
@@ -102,6 +104,7 @@ See README.md. Key variables:
 - `COSENSE_SID` — Session ID for private projects and write operations
 - `COSENSE_TOOL_SUFFIX` — Tool name suffix for multiple server instances
 - `COSENSE_CONVERT_NUMBERED_LISTS` — Convert numbered lists to bullet lists
+- `COSENSE_NOTATION_CONFIG` — Path to notation config JSON (heading levels, math, linking, custom rules)
 
 ## CI/CD & Release
 

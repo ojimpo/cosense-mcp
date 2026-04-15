@@ -52,10 +52,34 @@ Claude.ai → HTTPS → Cloudflare Tunnel → Docker Container (Express + MCP)
 | `search_pages` | 全文検索（最大100件） | 非公開PJのみ |
 | `create_page` | 新規ページ作成（WebSocket経由） | 必須 |
 | `insert_lines` | 指定行の後にテキスト挿入 | 必須 |
+| `replace_lines` | 指定行を置換（完全一致・ユニークマッチ） | 必須 |
+| `delete_lines` | 指定行を削除（完全一致・ユニークマッチ） | 必須 |
 | `get_smart_context` | ページと関連ページ（1-2ホップ）をまとめて取得 | 必須 |
 | `get_page_url` | ページURLの生成 | 不要 |
 
-`create_page`と`insert_lines`はデフォルトでCosense記法。tool descriptionにCosense記法のルール（リンク、見出し、インデント等）を埋め込んであるので、Claude.aiは指示なしでも`[リンク]`を積極的に使い、適切な見出しサイズで書く。
+`create_page`、`insert_lines`、`replace_lines`はデフォルトでCosense記法。tool descriptionにCosense記法のルール（リンク、見出し、インデント、KaTeX数式等）を埋め込んであるので、Claude.aiは指示なしでも`[リンク]`を積極的に使い、適切な見出しサイズで書く。
+
+### 記法カスタマイズ
+
+tool descriptionに埋め込まれる記法ガイドは、JSONファイルでカスタマイズできる。
+
+```json
+{
+  "maxHeadingLevel": 1,
+  "mathEnabled": true,
+  "aggressiveLinking": true,
+  "customRules": ["箇条書きで簡潔に書く"]
+}
+```
+
+| 項目 | デフォルト | 説明 |
+|------|-----------|------|
+| `maxHeadingLevel` | `1` | 見出しの最大レベル。1 = `[* ]`のみ、2 = `[** ]`まで |
+| `mathEnabled` | `true` | KaTeX数式記法（`[$ ]` / `[$$ ]`）のガイドを含める |
+| `aggressiveLinking` | `true` | 名詞・概念を積極的にリンクする指示を含める |
+| `customRules` | — | 追加のルールをtool descriptionに付与 |
+
+環境変数 `COSENSE_NOTATION_CONFIG` にJSONファイルのパスを指定する。未指定時はデフォルト値が使われる。
 
 ## セットアップ
 
@@ -121,6 +145,7 @@ claude mcp add cosense \
 | `COSENSE_PAGE_LIMIT` | `100` | 初期ページ取得数（1–1000） |
 | `COSENSE_SORT_METHOD` | `updated` | ソート方法 |
 | `COSENSE_EXCLUDE_PINNED` | `false` | ピン留めページを除外 |
+| `COSENSE_NOTATION_CONFIG` | — | 記法カスタマイズ用JSONファイルのパス |
 
 ## ライセンス
 
