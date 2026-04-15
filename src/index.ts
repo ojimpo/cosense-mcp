@@ -182,10 +182,9 @@ LINKS — the CORE VALUE of Cosense:
  External links: [https://example.com Label] or [Label https://example.com]
  #tag is equivalent to [tag]
 
-TEXT FORMATTING (asterisks control size AND boldness):
- [* text] = slightly large bold (use for section headings)
- [** text] = larger bold (use sparingly, for major sections only)
- [*** text] and [**** text] = very large (almost NEVER use)
+TEXT FORMATTING:
+ [* text] = bold heading (use for ALL section headings)
+ Do NOT use [** text], [*** text], or [**** text] — only [* ] is allowed for headings.
  [[text]] = bold without size change
  [/ text] = italic, [- text] = strikethrough
 
@@ -197,6 +196,10 @@ STRUCTURE:
 CODE:
  Inline: \`code\`
  Block: "code:filename" followed by space-indented lines
+
+MATH (KaTeX):
+ Inline: [$ e^{i\\pi} + 1 = 0]
+ Block: [$$  \\sum_{i=1}^{n} x_i]
 
 RULES:
  Do NOT duplicate the title (auto-displayed at top).
@@ -350,9 +353,10 @@ RULES:
                 type: "string",
                 description: `Text to insert in Scrapbox/Cosense syntax. ALWAYS use format='scrapbox'. Same notation as create_page body:
  [page title] = internal link (use aggressively for all nouns/concepts/tools)
- [* heading] = section heading, [** heading] = major heading (avoid [***])
+ [* heading] = section heading (the ONLY heading size — never use [** ] or larger)
  Space-indented lines = bullets. No unnecessary blank lines.
  [[bold]], [/ italic], [- strikethrough], \`inline code\`
+ Math: [$ formula] (inline), [$$ formula] (block)
  Can contain multiple lines separated by newline characters.`,
               },
               projectName: {
@@ -387,9 +391,10 @@ RULES:
                 type: "string",
                 description: `Replacement text in Scrapbox/Cosense syntax. ALWAYS use format='scrapbox'. Same notation as create_page body:
  [page title] = internal link (use aggressively for all nouns/concepts/tools)
- [* heading] = section heading, [** heading] = major heading (avoid [***])
+ [* heading] = section heading (the ONLY heading size — never use [** ] or larger)
  Space-indented lines = bullets. No unnecessary blank lines.
  [[bold]], [/ italic], [- strikethrough], \`inline code\`
+ Math: [$ formula] (inline), [$$ formula] (block)
  Can contain multiple lines (replaces 1 line with multiple lines).`,
               },
               projectName: {
