@@ -5,9 +5,11 @@ import { handleSearchPages } from './routes/handlers/search-pages.js';
 import { handleCreatePage } from './routes/handlers/create-page.js';
 import { handleGetPageUrl } from './routes/handlers/get-page-url.js';
 import { handleInsertLines } from './routes/handlers/insert-lines.js';
+import { handleReplaceLines } from './routes/handlers/replace-lines.js';
+import { handleDeleteLines } from './routes/handlers/delete-lines.js';
 import { handleGetSmartContext } from './routes/handlers/get-smart-context.js';
 
-const CLI_COMMANDS = ['get', 'list', 'search', 'create', 'url', 'insert', 'context'] as const;
+const CLI_COMMANDS = ['get', 'list', 'search', 'create', 'url', 'insert', 'replace', 'delete', 'context'] as const;
 type CliCommand = typeof CLI_COMMANDS[number];
 
 interface ParsedArgs {
@@ -142,6 +144,35 @@ Options:
   --format=FORMAT                Text format: markdown (default) | scrapbox
 
 ${COMMON_OPTIONS}`,
+
+  replace: `Usage: scrapbox-cosense-mcp replace <title> --target=TEXT --text=TEXT [options]
+
+Replace a specific line in a page. Requires COSENSE_SID.
+Target line must match exactly one line (unique match required).
+
+Arguments:
+  <title>                        Page title (required)
+
+Options:
+  --target=TEXT                  Exact text of the line to replace (required)
+  --text=TEXT                    Replacement text
+  --text-file=PATH               Read replacement text from file
+  --format=FORMAT                Text format: markdown (default) | scrapbox
+
+${COMMON_OPTIONS}`,
+
+  delete: `Usage: scrapbox-cosense-mcp delete <title> --target=TEXT [options]
+
+Delete a specific line from a page. Requires COSENSE_SID.
+Target line must match exactly one line (unique match required).
+
+Arguments:
+  <title>                        Page title (required)
+
+Options:
+  --target=TEXT                  Exact text of the line to delete (required)
+
+${COMMON_OPTIONS}`,
 };
 
 function printHelp(command?: string): void {
@@ -163,6 +194,8 @@ Commands:
   create <title>                 Create a new page
   url <title>                    Get page URL
   insert <title>                 Insert lines into a page
+  replace <title>                Replace a line in a page
+  delete <title>                 Delete a line from a page
   context <title>                Get smart context (related pages)
 
 ${COMMON_OPTIONS}
@@ -367,6 +400,60 @@ export async function runCli(argv: string[]): Promise<void> {
         targetLineText: afterText,
         text,
         format: flags['format'] === 'scrapbox' ? 'scrapbox' : undefined,
+        projectName: typeof flags['project'] === 'string' ? flags['project'] : undefined,
+        compact,
+      });
+      break;
+    }
+
+    case 'replace': {
+      const pageTitle = positional[0];
+      if (!pageTitle) {
+        process.stderr.write('Error: Page title is required. Usage: scrapbox-cosense-mcp replace <title> --target=TEXT --text=TEXT\n');
+        process.exit(2);
+      }
+      const targetText = typeof flags['target'] === 'string' ? unescapeString(flags['target']) : undefined;
+      if (!targetText) {
+        process.stderr.write('Error: --target=TEXT is required. Usage: scrapbox-cosense-mcp replace <title> --target=TEXT --text=TEXT\n');
+        process.exit(2);
+      }
+      let replaceText: string | undefined;
+      if (typeof flags['text-file'] === 'string') {
+        replaceText = readFileContent(flags['text-file']);
+      } else if (typeof flags['text'] === 'string') {
+        replaceText = unescapeString(flags['text']);
+      }
+      if (!replaceText) {
+        process.stderr.write('Error: --text=TEXT or --text-file=PATH is required.\n');
+        process.exit(2);
+      }
+      const project = requireProjectName(flags);
+      result = await handleReplaceLines(project, sid, {
+        pageTitle,
+        targetLineText: targetText,
+        newText: replaceText,
+        format: flags['format'] === 'scrapbox' ? 'scrapbox' : undefined,
+        projectName: typeof flags['project'] === 'string' ? flags['project'] : undefined,
+        compact,
+      });
+      break;
+    }
+
+    case 'delete': {
+      const pageTitle = positional[0];
+      if (!pageTitle) {
+        process.stderr.write('Error: Page title is required. Usage: scrapbox-cosense-mcp delete <title> --target=TEXT\n');
+        process.exit(2);
+      }
+      const deleteTarget = typeof flags['target'] === 'string' ? unescapeString(flags['target']) : undefined;
+      if (!deleteTarget) {
+        process.stderr.write('Error: --target=TEXT is required. Usage: scrapbox-cosense-mcp delete <title> --target=TEXT\n');
+        process.exit(2);
+      }
+      const project = requireProjectName(flags);
+      result = await handleDeleteLines(project, sid, {
+        pageTitle,
+        targetLineText: deleteTarget,
         projectName: typeof flags['project'] === 'string' ? flags['project'] : undefined,
         compact,
       });

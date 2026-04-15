@@ -369,6 +369,65 @@ RULES:
             required: ["pageTitle", "targetLineText", "text"],
           },
         },
+        {
+          name: getToolName("replace_lines"),
+          description: `Replace a specific line in a Scrapbox page on ${SERVICE_LABEL}. The target line must match exactly and uniquely (single match only). Use get_page first to see current page content. Uses ${projectName} project as default if projectName is not specified.`,
+          inputSchema: {
+            type: "object",
+            properties: {
+              pageTitle: {
+                type: "string",
+                description: "Title of the page to modify",
+              },
+              targetLineText: {
+                type: "string",
+                description: "Exact text of the line to replace. Must match exactly one line in the page. Use get_page to verify the exact text before calling.",
+              },
+              newText: {
+                type: "string",
+                description: `Replacement text in Scrapbox/Cosense syntax. ALWAYS use format='scrapbox'. Same notation as create_page body:
+ [page title] = internal link (use aggressively for all nouns/concepts/tools)
+ [* heading] = section heading, [** heading] = major heading (avoid [***])
+ Space-indented lines = bullets. No unnecessary blank lines.
+ [[bold]], [/ italic], [- strikethrough], \`inline code\`
+ Can contain multiple lines (replaces 1 line with multiple lines).`,
+              },
+              projectName: {
+                type: "string",
+                description: `Target project name. If not specified, defaults to '${projectName}'.`,
+              },
+              format: {
+                type: "string",
+                enum: ["scrapbox", "markdown"],
+                default: "scrapbox",
+                description: "Content format. 'scrapbox' (default, STRONGLY recommended) writes native Cosense syntax as-is. Always use 'scrapbox'.",
+              },
+            },
+            required: ["pageTitle", "targetLineText", "newText"],
+          },
+        },
+        {
+          name: getToolName("delete_lines"),
+          description: `Delete a specific line from a Scrapbox page on ${SERVICE_LABEL}. The target line must match exactly and uniquely (single match only). Use get_page first to see current page content. Uses ${projectName} project as default if projectName is not specified.`,
+          inputSchema: {
+            type: "object",
+            properties: {
+              pageTitle: {
+                type: "string",
+                description: "Title of the page to modify",
+              },
+              targetLineText: {
+                type: "string",
+                description: "Exact text of the line to delete. Must match exactly one line in the page. Use get_page to verify the exact text before calling.",
+              },
+              projectName: {
+                type: "string",
+                description: `Target project name. If not specified, defaults to '${projectName}'.`,
+              },
+            },
+            required: ["pageTitle", "targetLineText"],
+          },
+        },
       ];
 
 
