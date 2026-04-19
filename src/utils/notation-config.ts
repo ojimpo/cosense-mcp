@@ -7,6 +7,8 @@ export interface NotationConfig {
   mathEnabled?: boolean | undefined;
   /** Guide LLM to aggressively wrap nouns in brackets as links (default: true) */
   aggressiveLinking?: boolean | undefined;
+  /** Insert one blank line after each heading (helps readability in presentation mode; default: false) */
+  blankLineAfterHeading?: boolean | undefined;
   /** Additional custom rules appended to tool descriptions */
   customRules?: string[] | undefined;
 }
@@ -15,6 +17,7 @@ const DEFAULT_CONFIG = {
   maxHeadingLevel: 1 as const,
   mathEnabled: true,
   aggressiveLinking: true,
+  blankLineAfterHeading: false,
 };
 
 export function loadNotationConfig(): NotationConfig {
@@ -61,6 +64,7 @@ export function buildFullDescription(config: NotationConfig): string {
   const maxLevel: number = config.maxHeadingLevel ?? DEFAULT_CONFIG.maxHeadingLevel;
   const mathEnabled: boolean = config.mathEnabled ?? DEFAULT_CONFIG.mathEnabled;
   const aggressiveLinking: boolean = config.aggressiveLinking ?? DEFAULT_CONFIG.aggressiveLinking;
+  const blankLineAfterHeading: boolean = config.blankLineAfterHeading ?? DEFAULT_CONFIG.blankLineAfterHeading;
 
   const sections: string[] = [];
 
@@ -84,9 +88,12 @@ ${buildHeadingGuide(maxLevel)}
  [/ text] = italic, [- text] = strikethrough`);
 
   // Structure
+  const blankLineRule = blankLineAfterHeading
+    ? 'Add ONE blank line after each heading for readability. Otherwise keep pages compact — no blank lines between list items or within sections.'
+    : 'Do NOT add blank lines between sections. Cosense pages are compact — use headings and indentation, NOT vertical whitespace.';
   sections.push(`STRUCTURE:
  Lines starting with space(s) = bulleted list. More spaces = deeper nesting.
- Do NOT add blank lines between sections. Cosense pages are compact — use headings and indentation, NOT vertical whitespace.
+ ${blankLineRule}
  > quote for block quotes`);
 
   // Code
@@ -105,7 +112,9 @@ ${buildHeadingGuide(maxLevel)}
   const rules = [
     'Do NOT duplicate the title (auto-displayed at top).',
     'Write concisely in bullet points, not prose paragraphs.',
-    'Minimize blank lines. Zero blank lines between a heading and its content.',
+    blankLineAfterHeading
+      ? 'Minimize blank lines — EXCEPT insert exactly one blank line immediately after each heading.'
+      : 'Minimize blank lines. Zero blank lines between a heading and its content.',
   ];
   if (config.customRules) {
     rules.push(...config.customRules);
@@ -120,6 +129,7 @@ export function buildCompactDescription(config: NotationConfig, suffix: string):
   const maxLevel: number = config.maxHeadingLevel ?? DEFAULT_CONFIG.maxHeadingLevel;
   const mathEnabled: boolean = config.mathEnabled ?? DEFAULT_CONFIG.mathEnabled;
   const aggressiveLinking: boolean = config.aggressiveLinking ?? DEFAULT_CONFIG.aggressiveLinking;
+  const blankLineAfterHeading: boolean = config.blankLineAfterHeading ?? DEFAULT_CONFIG.blankLineAfterHeading;
 
   const lines: string[] = [
     `ALWAYS use format='scrapbox'. Same notation as create_page body:`,
@@ -137,7 +147,11 @@ export function buildCompactDescription(config: NotationConfig, suffix: string):
     lines.push(` [* heading] = section heading (up to [${'*'.repeat(maxLevel)} ] max)`);
   }
 
-  lines.push(' Space-indented lines = bullets. No unnecessary blank lines.');
+  if (blankLineAfterHeading) {
+    lines.push(' Space-indented lines = bullets. Add one blank line after each heading; otherwise no blank lines.');
+  } else {
+    lines.push(' Space-indented lines = bullets. No unnecessary blank lines.');
+  }
   lines.push(' [[bold]], [/ italic], [- strikethrough], `inline code`');
 
   if (mathEnabled) {
