@@ -68,7 +68,7 @@ tool descriptionに埋め込まれる記法ガイドは、JSONファイルでカ
   "maxHeadingLevel": 1,
   "mathEnabled": true,
   "aggressiveLinking": true,
-  "blankLineAfterHeading": false,
+  "blankLineBeforeHeading": false,
   "customRules": ["箇条書きで簡潔に書く"]
 }
 ```
@@ -78,7 +78,7 @@ tool descriptionに埋め込まれる記法ガイドは、JSONファイルでカ
 | `maxHeadingLevel` | `1` | 見出しの最大レベル。1 = `[* ]`のみ、2 = `[** ]`まで |
 | `mathEnabled` | `true` | KaTeX数式記法（`[$ ]` / `[$$ ]`）のガイドを含める |
 | `aggressiveLinking` | `true` | 名詞・概念を積極的にリンクする指示を含める |
-| `blankLineAfterHeading` | `false` | 各見出しの直後に空行を1行入れる（プレゼンモードでの見やすさ向上） |
+| `blankLineBeforeHeading` | `false` | 各見出しの**直前**に空行を1行入れてセクションを区切る（見出しと直下の本文は密着のまま。先頭の見出しは除外） |
 | `customRules` | — | 追加のルールをtool descriptionに付与 |
 
 環境変数 `COSENSE_NOTATION_CONFIG` にJSONファイルのパスを指定する。未指定時はデフォルト値が使われる。
