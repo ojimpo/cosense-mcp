@@ -84,7 +84,7 @@ export function buildFullDescription(config: NotationConfig): string {
   // Text formatting
   sections.push(`TEXT FORMATTING:
 ${buildHeadingGuide(maxLevel)}
- [[text]] = bold without size change
+ For inline emphasis (including inside table cells), use [* text]. Do NOT use [[text]] for bold — it renders as bold-ish but is easily confused with internal links, and notably does NOT bold inside table cells.
  [/ text] = italic, [- text] = strikethrough`);
 
   // Structure
@@ -152,7 +152,7 @@ export function buildCompactDescription(config: NotationConfig, suffix: string):
   } else {
     lines.push(' Space-indented lines = bullets. No unnecessary blank lines.');
   }
-  lines.push(' [[bold]], [/ italic], [- strikethrough], `inline code`');
+  lines.push(' Emphasis: [* text] (works in table cells too). [/ italic], [- strikethrough], `inline code`. Do NOT use [[ ]] for bold.');
 
   if (mathEnabled) {
     lines.push(' Math: [$ formula] (inline), [$$ formula] (block)');
