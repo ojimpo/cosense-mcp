@@ -99,7 +99,15 @@ ${buildHeadingGuide(maxLevel)}
   // Code
   sections.push(`CODE:
  Inline: \`code\`
- Block: "code:filename" followed by space-indented lines`);
+ Block: a "code:filename" line, followed by body lines each indented ONE space deeper than the "code:" line.
+ INDENT CONSISTENCY IS MANDATORY: place "code:" at the SAME indent as its sibling bullets, then indent every body line exactly one more space. Getting this wrong breaks rendering.
+ Example inside a nested [* section] (the section's content sits at one indent; the code block sits there too):
+   [* section]
+    intro bullet
+    code:example.txt
+     body line 1
+     body line 2
+    next bullet`);
 
   // Math
   if (mathEnabled) {
@@ -153,6 +161,7 @@ export function buildCompactDescription(config: NotationConfig, suffix: string):
     lines.push(' Space-indented lines = bullets. No unnecessary blank lines.');
   }
   lines.push(' Emphasis: [* text] (works in table cells too). [/ italic], [- strikethrough], `inline code`. Do NOT use [[ ]] for bold.');
+  lines.push(' Code block: "code:filename" line, then body lines indented ONE space deeper. Keep "code:" at the same indent as sibling bullets — mismatched indent breaks rendering.');
 
   if (mathEnabled) {
     lines.push(' Math: [$ formula] (inline), [$$ formula] (block)');
