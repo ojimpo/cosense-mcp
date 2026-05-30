@@ -123,13 +123,32 @@ describe('handleInsertLines', () => {
         pageTitle: 'Test Page',
         targetLineText: 'target line',
         text: '# Header\nContent',
+        format: 'markdown' as const, // 変換はformat=markdown指定時のみ（デフォルトはscrapboxでpass-through）
       };
-      
+
       await handleInsertLines(mockProjectName, mockCosenseSid, params);
-      
+
       expect(mockedConvert).toHaveBeenCalledWith('# Header\nContent', {
         convertNumberedLists: false // デフォルト値
       });
+    });
+
+    test('format未指定（デフォルトscrapbox）ではマークダウン変換されないこと', async () => {
+      const { convertMarkdownToScrapbox } = await import('@/utils/markdown-converter.js');
+      const mockedConvert = convertMarkdownToScrapbox as jest.MockedFunction<typeof convertMarkdownToScrapbox>;
+
+      mockedPatch.mockResolvedValue({ ok: true, val: 'commitId', err: null });
+
+      const params = {
+        pageTitle: 'Test Page',
+        targetLineText: 'target line',
+        text: '# Header\nContent',
+      };
+
+      await handleInsertLines(mockProjectName, mockCosenseSid, params);
+
+      // デフォルトはscrapboxなのでpass-through、変換は呼ばれない
+      expect(mockedConvert).not.toHaveBeenCalled();
     });
 
     test('複数行のテキスト挿入が成功すること', async () => {
