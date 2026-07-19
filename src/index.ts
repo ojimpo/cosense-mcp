@@ -399,6 +399,28 @@ function createServer(): Server {
           },
         },
         {
+          name: getToolName("rename_page"),
+          description: `Rename a Scrapbox page on ${SERVICE_LABEL} by rewriting its title line. Fails if the page does not exist or a page with the new title already exists. IMPORTANT: links from other pages to the old title are NOT updated automatically — the response lists pages that may need updating. Uses ${projectName} project as default if projectName is not specified.`,
+          inputSchema: {
+            type: "object",
+            properties: {
+              pageTitle: {
+                type: "string",
+                description: "Current title of the page to rename",
+              },
+              newTitle: {
+                type: "string",
+                description: "New title for the page",
+              },
+              projectName: {
+                type: "string",
+                description: `Target project name. If not specified, defaults to '${projectName}'.`,
+              },
+            },
+            required: ["pageTitle", "newTitle"],
+          },
+        },
+        {
           name: getToolName("delete_lines"),
           description: `Delete a specific line from a Scrapbox page on ${SERVICE_LABEL}. The target line must match exactly and uniquely (single match only). Use get_page first to see current page content. Uses ${projectName} project as default if projectName is not specified.`,
           inputSchema: {

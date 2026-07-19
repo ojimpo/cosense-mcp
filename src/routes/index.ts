@@ -10,6 +10,7 @@ import { handleReplaceLines } from './handlers/replace-lines.js';
 import { handleDeleteLines } from './handlers/delete-lines.js';
 import { handleGetSmartContext } from './handlers/get-smart-context.js';
 import { handleGetNotationGuide } from './handlers/get-notation-guide.js';
+import { handleRenamePage } from './handlers/rename-page.js';
 
 // ツール名正規化ヘルパー
 function normalizeToolName(toolName: string, toolSuffix?: string): string {
@@ -128,6 +129,17 @@ export function setupRoutes(
             occurrence: request.params.arguments?.occurrence != null
               ? Number(request.params.arguments.occurrence)
               : undefined,
+            projectName: request.params.arguments?.projectName as string | undefined,
+          }
+        );
+
+      case "rename_page":
+        return handleRenamePage(
+          projectName,
+          cosenseSid,
+          {
+            pageTitle: String(request.params.arguments?.pageTitle),
+            newTitle: String(request.params.arguments?.newTitle),
             projectName: request.params.arguments?.projectName as string | undefined,
           }
         );

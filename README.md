@@ -57,6 +57,7 @@ Claude.ai → HTTPS → Cloudflare Tunnel → Docker Container (Express + MCP)
 | `get_smart_context` | ページと関連ページ（1-2ホップ）をまとめて取得 | 必須 |
 | `get_page_url` | ページURLの生成 | 不要 |
 | `get_notation_guide` | Cosense記法ガイドの取得（書き込み前に呼ぶ） | 不要 |
+| `rename_page` | ページのリネーム（タイトル行の書き換え。他ページからのリンクは自動更新されないため、更新候補をレスポンスで案内） | 必須 |
 
 `create_page`、`insert_lines`、`replace_lines`はデフォルトでCosense記法。記法ルール（リンク、見出し、インデント、KaTeX数式等）の本体は`get_notation_guide`ツールのレスポンスで返し、各tool descriptionには「書き込み前に`get_notation_guide`を呼ぶこと」という指示と最小限のコア記法だけを置いている。
 

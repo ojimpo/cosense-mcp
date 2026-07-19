@@ -9,8 +9,9 @@ import { handleReplaceLines } from './routes/handlers/replace-lines.js';
 import { handleDeleteLines } from './routes/handlers/delete-lines.js';
 import { handleGetSmartContext } from './routes/handlers/get-smart-context.js';
 import { handleGetNotationGuide } from './routes/handlers/get-notation-guide.js';
+import { handleRenamePage } from './routes/handlers/rename-page.js';
 
-const CLI_COMMANDS = ['get', 'list', 'search', 'create', 'url', 'insert', 'replace', 'delete', 'context', 'guide'] as const;
+const CLI_COMMANDS = ['get', 'list', 'search', 'create', 'url', 'insert', 'replace', 'delete', 'context', 'guide', 'rename'] as const;
 type CliCommand = typeof CLI_COMMANDS[number];
 
 interface ParsedArgs {
@@ -178,6 +179,20 @@ Options:
 
 ${COMMON_OPTIONS}`,
 
+  rename: `Usage: scrapbox-cosense-mcp rename <title> --to=NEW_TITLE [options]
+
+Rename a page by rewriting its title line. Requires COSENSE_SID.
+Fails if the page does not exist or the new title is already taken.
+Links from other pages to the old title are NOT updated automatically.
+
+Arguments:
+  <title>                        Current page title (required)
+
+Options:
+  --to=NEW_TITLE                 New page title (required)
+
+${COMMON_OPTIONS}`,
+
   guide: `Usage: scrapbox-cosense-mcp guide [options]
 
 Show the Cosense/Scrapbox notation guide (headings, links, code blocks, etc.).
@@ -209,6 +224,7 @@ Commands:
   replace <title>                Replace a line in a page
   delete <title>                 Delete a line from a page
   context <title>                Get smart context (related pages)
+  rename <title>                 Rename a page
   guide                          Show the Cosense notation guide
 
 ${COMMON_OPTIONS}
@@ -459,6 +475,27 @@ export async function runCli(argv: string[]): Promise<void> {
         newText: replaceText,
         occurrence: parseOccurrence(flags),
         format: flags['format'] === 'scrapbox' ? 'scrapbox' : undefined,
+        projectName: typeof flags['project'] === 'string' ? flags['project'] : undefined,
+        compact,
+      });
+      break;
+    }
+
+    case 'rename': {
+      const pageTitle = positional[0];
+      if (!pageTitle) {
+        process.stderr.write('Error: Page title is required. Usage: scrapbox-cosense-mcp rename <title> --to=NEW_TITLE\n');
+        process.exit(2);
+      }
+      const newTitle = typeof flags['to'] === 'string' ? flags['to'] : undefined;
+      if (!newTitle) {
+        process.stderr.write('Error: --to=NEW_TITLE is required. Usage: scrapbox-cosense-mcp rename <title> --to=NEW_TITLE\n');
+        process.exit(2);
+      }
+      const project = requireProjectName(flags);
+      result = await handleRenamePage(project, sid, {
+        pageTitle,
+        newTitle,
         projectName: typeof flags['project'] === 'string' ? flags['project'] : undefined,
         compact,
       });

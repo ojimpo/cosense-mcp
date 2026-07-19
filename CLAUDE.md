@@ -48,7 +48,7 @@ npm run inspector    # Debug with MCP Inspector
 
 ## Architecture
 
-### Tools (10)
+### Tools (11)
 
 | Tool | Description | Auth |
 |---|---|---|
@@ -62,10 +62,11 @@ npm run inspector    # Debug with MCP Inspector
 | `delete_lines` | Delete a line or consecutive block (exact match, `occurrence` for duplicates) | SID |
 | `get_smart_context` | Get page + linked pages (1-hop/2-hop) in AI-optimized format | SID |
 | `get_notation_guide` | Return the full Cosense notation guide (call before writing content) | - |
+| `rename_page` | Rename a page by rewriting its title line. Backlinks are NOT auto-updated (response lists candidates) | SID |
 
 ### CLI
 
-All tools are also available as CLI subcommands (`get`, `list`, `search`, `create`, `url`, `insert`, `replace`, `delete`, `context`, `guide`). Run `scrapbox-cosense-mcp <command> --help` for usage. Key flags:
+All tools are also available as CLI subcommands (`get`, `list`, `search`, `create`, `url`, `insert`, `replace`, `delete`, `context`, `guide`, `rename`). Run `scrapbox-cosense-mcp <command> --help` for usage. Key flags:
 
 - `--compact` — Token-efficient output (85% smaller for list)
 - `--json` — JSON output
