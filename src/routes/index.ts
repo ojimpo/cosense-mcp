@@ -94,6 +94,9 @@ export function setupRoutes(
             pageTitle: String(request.params.arguments?.pageTitle),
             targetLineText: String(request.params.arguments?.targetLineText),
             text: String(request.params.arguments?.text),
+            occurrence: request.params.arguments?.occurrence != null
+              ? Number(request.params.arguments.occurrence)
+              : undefined,
             projectName: request.params.arguments?.projectName as string | undefined,
             format: (request.params.arguments?.format as "markdown" | "scrapbox" | undefined) ?? undefined
           }
@@ -107,6 +110,9 @@ export function setupRoutes(
             pageTitle: String(request.params.arguments?.pageTitle),
             targetLineText: String(request.params.arguments?.targetLineText),
             newText: String(request.params.arguments?.newText),
+            occurrence: request.params.arguments?.occurrence != null
+              ? Number(request.params.arguments.occurrence)
+              : undefined,
             projectName: request.params.arguments?.projectName as string | undefined,
             format: (request.params.arguments?.format as "markdown" | "scrapbox" | undefined) ?? undefined
           }
@@ -119,6 +125,9 @@ export function setupRoutes(
           {
             pageTitle: String(request.params.arguments?.pageTitle),
             targetLineText: String(request.params.arguments?.targetLineText),
+            occurrence: request.params.arguments?.occurrence != null
+              ? Number(request.params.arguments.occurrence)
+              : undefined,
             projectName: request.params.arguments?.projectName as string | undefined,
           }
         );

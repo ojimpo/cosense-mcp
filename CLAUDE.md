@@ -57,9 +57,9 @@ npm run inspector    # Debug with MCP Inspector
 | `search_pages` | Keyword search (API limit: 100 results) | - |
 | `create_page` | Create new page. Rejects if page already exists | SID |
 | `get_page_url` | Generate URL from page title | - |
-| `insert_lines` | Insert text after a target line (exact match). Appends to end if not found | SID |
-| `replace_lines` | Replace a line (exact unique match). Supports 1→N line expansion | SID |
-| `delete_lines` | Delete a line (exact unique match) | SID |
+| `insert_lines` | Insert text after a target line/block (exact match, `occurrence` for duplicates). Appends to end if not found | SID |
+| `replace_lines` | Replace a line or consecutive block (exact match, `occurrence` for duplicates). Supports N→M line expansion | SID |
+| `delete_lines` | Delete a line or consecutive block (exact match, `occurrence` for duplicates) | SID |
 | `get_smart_context` | Get page + linked pages (1-hop/2-hop) in AI-optimized format | SID |
 | `get_notation_guide` | Return the full Cosense notation guide (call before writing content) | - |
 

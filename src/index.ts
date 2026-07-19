@@ -336,7 +336,12 @@ function createServer(): Server {
               },
               targetLineText: {
                 type: "string",
-                description: "Text content of the line after which to insert new text. If not found, text will be appended to the end of the page.",
+                description: "Exact text of the line — or a newline-separated block of consecutive lines — after which to insert. If multiple locations match, inserts after the first unless occurrence is specified. If not found, text is appended to the end of the page.",
+              },
+              occurrence: {
+                type: "number",
+                minimum: 1,
+                description: "1-based index to select among multiple matches, in page order.",
               },
               text: {
                 type: "string",
@@ -368,7 +373,12 @@ function createServer(): Server {
               },
               targetLineText: {
                 type: "string",
-                description: "Exact text of the line to replace. Must match exactly one line in the page. Use get_page to verify the exact text before calling.",
+                description: "Exact text of the line to replace. May contain newlines to match a block of consecutive lines exactly (the whole block is replaced). Must match exactly one location — if the same line/block appears multiple times, pass occurrence or extend the block with adjacent lines. Use get_page to verify the exact text before calling.",
+              },
+              occurrence: {
+                type: "number",
+                minimum: 1,
+                description: "1-based index to select among multiple matches (in page order). Required when targetLineText matches more than one location.",
               },
               newText: {
                 type: "string",
@@ -400,7 +410,12 @@ function createServer(): Server {
               },
               targetLineText: {
                 type: "string",
-                description: "Exact text of the line to delete. Must match exactly one line in the page. Use get_page to verify the exact text before calling.",
+                description: "Exact text of the line to delete. May contain newlines to match a block of consecutive lines exactly (the whole block is deleted). Must match exactly one location — if the same line/block appears multiple times, pass occurrence or extend the block with adjacent lines. Use get_page to verify the exact text before calling.",
+              },
+              occurrence: {
+                type: "number",
+                minimum: 1,
+                description: "1-based index to select among multiple matches (in page order). Required when targetLineText matches more than one location.",
               },
               projectName: {
                 type: "string",

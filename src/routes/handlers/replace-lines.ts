@@ -2,11 +2,13 @@ import { patch } from '@cosense/std/websocket';
 import type { BaseLine } from '@cosense/types/rest';
 import { convertMarkdownToScrapbox } from '../../utils/markdown-converter.js';
 import { formatError, stringifyError } from '../../utils/format.js';
+import { selectBlockMatch, formatMatchStarts, AMBIGUITY_HINT, type BlockMatch } from '../../utils/line-match.js';
 
 export interface ReplaceLinesParams {
   pageTitle: string;
   targetLineText: string;
   newText: string;
+  occurrence?: number | undefined;
   projectName?: string | undefined;
   format?: "markdown" | "scrapbox" | undefined;
   compact?: boolean | undefined;
@@ -38,59 +40,52 @@ export async function handleReplaceLines(
       convertedText = params.newText;
     }
 
-    let matchCount = 0;
+    let match: BlockMatch | undefined;
     const result = await patch(projectName, params.pageTitle, (lines: BaseLine[]) => {
-      // Count exact matches
-      const matchingIndices = lines
-        .map((line, index) => line.text === params.targetLineText ? index : -1)
-        .filter(index => index >= 0);
+      match = selectBlockMatch(lines, params.targetLineText, params.occurrence);
 
-      matchCount = matchingIndices.length;
-
-      if (matchCount === 0) {
-        return undefined; // abort
-      }
-      if (matchCount > 1) {
+      if (match.selected === undefined) {
         return undefined; // abort
       }
 
-      const targetIndex = matchingIndices[0]!;
       const newLines = convertedText.split('\n').map(text => ({ text }));
 
       return [
-        ...lines.slice(0, targetIndex),
+        ...lines.slice(0, match.selected),
         ...newLines,
-        ...lines.slice(targetIndex + 1)
+        ...lines.slice(match.selected + match.targetLines.length)
       ];
     }, {
       sid: cosenseSid
     });
 
     // Handle match errors (patch was aborted with undefined)
-    if (matchCount === 0) {
+    const errorContext = {
+      Operation: 'replace_lines',
+      Project: projectName,
+      Page: params.pageTitle,
+      'Target line': `"${params.targetLineText}"`,
+      Timestamp: new Date().toISOString(),
+    };
+
+    if (match?.selectionError === 'not_found') {
       return formatError(
         'Target line not found. Please get the latest page content and verify the exact line text.',
-        {
-          Operation: 'replace_lines',
-          Project: projectName,
-          Page: params.pageTitle,
-          'Target line': `"${params.targetLineText}"`,
-          Timestamp: new Date().toISOString(),
-        },
+        errorContext,
         params.compact
       );
     }
-    if (matchCount > 1) {
+    if (match?.selectionError === 'ambiguous') {
       return formatError(
-        `Multiple lines matched (${matchCount} matches). Please specify a more unique line text.`,
-        {
-          Operation: 'replace_lines',
-          Project: projectName,
-          Page: params.pageTitle,
-          'Target line': `"${params.targetLineText}"`,
-          'Match count': String(matchCount),
-          Timestamp: new Date().toISOString(),
-        },
+        `Multiple locations matched (${match.matchStarts.length} matches, starting at lines ${formatMatchStarts(match.matchStarts)}; line 1 = title). ${AMBIGUITY_HINT}`,
+        { ...errorContext, 'Match count': String(match.matchStarts.length) },
+        params.compact
+      );
+    }
+    if (match?.selectionError === 'occurrence_out_of_range') {
+      return formatError(
+        `occurrence=${params.occurrence} is out of range: only ${match.matchStarts.length} match(es) found (starting at lines ${formatMatchStarts(match.matchStarts)}; line 1 = title).`,
+        { ...errorContext, 'Match count': String(match.matchStarts.length) },
         params.compact
       );
     }
@@ -99,13 +94,14 @@ export async function handleReplaceLines(
       throw new Error(`WebSocket patch failed: ${stringifyError(result.err)}`);
     }
 
+    const targetLinesCount = match?.targetLines.length ?? 1;
     const replacedLinesCount = convertedText.split('\n').length;
 
     if (params.compact) {
       return {
         content: [{
           type: "text",
-          text: `replaced: 1 line → ${replacedLinesCount} line(s) in ${params.pageTitle}`
+          text: `replaced: ${targetLinesCount} line(s) → ${replacedLinesCount} line(s) in ${params.pageTitle}`
         }]
       };
     }
@@ -114,11 +110,11 @@ export async function handleReplaceLines(
       content: [{
         type: "text",
         text: [
-          'Successfully replaced line in page',
+          'Successfully replaced line(s) in page',
           `Operation: replace_lines`,
           `Project: ${projectName}`,
           `Page: ${params.pageTitle}`,
-          `Target line: "${params.targetLineText}"`,
+          `Target block: "${params.targetLineText}" (${targetLinesCount} line(s))`,
           `Replacement lines: ${replacedLinesCount}`,
           `Timestamp: ${new Date().toISOString()}`
         ].join('\n')

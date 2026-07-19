@@ -2,11 +2,13 @@ import { patch } from '@cosense/std/websocket';
 import type { BaseLine } from '@cosense/types/rest';
 import { convertMarkdownToScrapbox } from '../../utils/markdown-converter.js';
 import { formatError, stringifyError } from '../../utils/format.js';
+import { selectBlockMatch, formatMatchStarts, type BlockMatch } from '../../utils/line-match.js';
 
 export interface InsertLinesParams {
   pageTitle: string;
   targetLineText: string;
   text: string;
+  occurrence?: number | undefined;
   projectName?: string | undefined;
   format?: "markdown" | "scrapbox" | undefined;
   compact?: boolean | undefined;
@@ -41,19 +43,20 @@ export async function handleInsertLines(
     }
 
     // WebSocket経由でページを更新
-    let foundTarget = false;
+    // 互換性維持: occurrence未指定で複数マッチした場合は従来通り最初のマッチ、
+    // 見つからない場合は末尾追記。occurrence指定時のみ範囲外をエラーにする。
+    let match: BlockMatch | undefined;
     const result = await patch(projectName, params.pageTitle, (lines: BaseLine[]) => {
-      // 対象行を検索（完全一致）
-      const targetIndex = lines.findIndex((line: BaseLine) =>
-        line.text === params.targetLineText
-      );
+      match = selectBlockMatch(lines, params.targetLineText, params.occurrence);
 
-      if (targetIndex >= 0) {
-        foundTarget = true;
+      if (match.selectionError === 'occurrence_out_of_range') {
+        return undefined; // abort
       }
 
-      // 挿入位置を決定（見つからない場合は末尾）
-      const insertIndex = targetIndex >= 0 ? targetIndex + 1 : lines.length;
+      const blockStart = match.selected ?? match.matchStarts[0];
+      const insertIndex = blockStart !== undefined
+        ? blockStart + match.targetLines.length
+        : lines.length;
 
       // 新しいテキストを行に分割
       const newLines = convertedText.split('\n').map(text => ({ text }));
@@ -68,6 +71,21 @@ export async function handleInsertLines(
       sid: cosenseSid
     });
 
+    if (match?.selectionError === 'occurrence_out_of_range') {
+      return formatError(
+        `occurrence=${params.occurrence} is out of range: only ${match.matchStarts.length} match(es) found (starting at lines ${formatMatchStarts(match.matchStarts)}; line 1 = title).`,
+        {
+          Operation: 'insert_lines',
+          Project: projectName,
+          Page: params.pageTitle,
+          'Target line': `"${params.targetLineText}"`,
+          'Match count': String(match.matchStarts.length),
+          Timestamp: new Date().toISOString(),
+        },
+        params.compact
+      );
+    }
+
     // patchのResult型を正しく判定
     if (!result.ok) {
       throw new Error(`WebSocket patch failed: ${stringifyError(result.err)}`);
@@ -75,7 +93,12 @@ export async function handleInsertLines(
 
     // 成功時のレスポンス
     const insertedLinesCount = convertedText.split('\n').length;
-    const targetLineFound = foundTarget ? "found" : "not found (appended to end)";
+    const matchCount = match?.matchStarts.length ?? 0;
+    const targetLineFound = matchCount === 0
+      ? "not found (appended to end)"
+      : matchCount === 1 || params.occurrence !== undefined
+        ? "found"
+        : `found ${matchCount} matches — inserted after the first (pass occurrence=N to target another)`;
 
     if (params.compact) {
       return {

@@ -81,7 +81,7 @@ describe('handleReplaceLines', () => {
       const result = await handleReplaceLines(mockProjectName, mockCosenseSid, params);
 
       expect(result.isError).toBe(true);
-      expect(result.content[0]?.text).toContain('Multiple lines matched');
+      expect(result.content[0]?.text).toContain('Multiple locations matched');
       expect(result.content[0]?.text).toContain('2 matches');
     });
   });
@@ -137,6 +137,54 @@ describe('handleReplaceLines', () => {
       expect(capturedResult[2]?.text).toBe('new line 2');
       expect(capturedResult[3]?.text).toBe('new line 3');
       expect(capturedResult[4]?.text).toBe('other line');
+    });
+
+    test('occurrence指定で重複行のN番目を置換できること', async () => {
+      let capturedResult: any;
+      mockedPatch.mockImplementation(async (_project, _title, updateFn) => {
+        const mockLines = [
+          { text: 'title', id: 'l1' },
+          { text: 'dup', id: 'l2' },
+          { text: 'mid', id: 'l3' },
+          { text: 'dup', id: 'l4' },
+        ] as any;
+        capturedResult = updateFn(mockLines, {} as any);
+        return { ok: true, val: 'commitId', err: null };
+      });
+
+      const result = await handleReplaceLines(mockProjectName, mockCosenseSid, {
+        pageTitle: 'Test Page',
+        targetLineText: 'dup',
+        newText: 'fixed',
+        occurrence: 2,
+      });
+
+      expect(result.isError).toBeUndefined();
+      expect(capturedResult.map((l: any) => l.text)).toEqual(['title', 'dup', 'mid', 'fixed']);
+    });
+
+    test('複数行ブロックをまとめて置換できること', async () => {
+      let capturedResult: any;
+      mockedPatch.mockImplementation(async (_project, _title, updateFn) => {
+        const mockLines = [
+          { text: 'title', id: 'l1' },
+          { text: 'block 1', id: 'l2' },
+          { text: 'block 2', id: 'l3' },
+          { text: 'tail', id: 'l4' },
+        ] as any;
+        capturedResult = updateFn(mockLines, {} as any);
+        return { ok: true, val: 'commitId', err: null };
+      });
+
+      const result = await handleReplaceLines(mockProjectName, mockCosenseSid, {
+        pageTitle: 'Test Page',
+        targetLineText: 'block 1\nblock 2',
+        newText: 'merged',
+      });
+
+      expect(result.isError).toBeUndefined();
+      expect(result.content[0]?.text).toContain('2 line(s)');
+      expect(capturedResult.map((l: any) => l.text)).toEqual(['title', 'merged', 'tail']);
     });
 
     test('完全一致のみマッチすること', async () => {

@@ -139,7 +139,8 @@ Arguments:
   <title>                        Page title (required)
 
 Options:
-  --after=TEXT                   Target line to insert after (required)
+  --after=TEXT                   Target line (or \n-separated block) to insert after (required)
+  --occurrence=N                 Select the Nth match when the target appears multiple times
   --text=TEXT                    Text to insert
   --text-file=PATH               Read insertion text from file
   --format=FORMAT                Text format: markdown (default) | scrapbox
@@ -155,7 +156,8 @@ Arguments:
   <title>                        Page title (required)
 
 Options:
-  --target=TEXT                  Exact text of the line to replace (required)
+  --target=TEXT                  Exact text of the line (or \n-separated block) to replace (required)
+  --occurrence=N                 Select the Nth match when the target appears multiple times
   --text=TEXT                    Replacement text
   --text-file=PATH               Read replacement text from file
   --format=FORMAT                Text format: markdown (default) | scrapbox
@@ -171,7 +173,8 @@ Arguments:
   <title>                        Page title (required)
 
 Options:
-  --target=TEXT                  Exact text of the line to delete (required)
+  --target=TEXT                  Exact text of the line (or \n-separated block) to delete (required)
+  --occurrence=N                 Select the Nth match when the target appears multiple times
 
 ${COMMON_OPTIONS}`,
 
@@ -246,6 +249,17 @@ function requireProjectName(flags: Record<string, string | boolean>): string {
     process.exit(2);
   }
   return project;
+}
+
+function parseOccurrence(flags: Record<string, string | boolean>): number | undefined {
+  const raw = flags['occurrence'];
+  if (raw === undefined) return undefined;
+  const n = typeof raw === 'string' ? parseInt(raw, 10) : NaN;
+  if (!Number.isInteger(n) || n < 1) {
+    process.stderr.write('Error: --occurrence must be a positive integer.\n');
+    process.exit(2);
+  }
+  return n;
 }
 
 function unescapeString(s: string): string {
@@ -409,6 +423,7 @@ export async function runCli(argv: string[]): Promise<void> {
         pageTitle,
         targetLineText: afterText,
         text,
+        occurrence: parseOccurrence(flags),
         format: flags['format'] === 'scrapbox' ? 'scrapbox' : undefined,
         projectName: typeof flags['project'] === 'string' ? flags['project'] : undefined,
         compact,
@@ -442,6 +457,7 @@ export async function runCli(argv: string[]): Promise<void> {
         pageTitle,
         targetLineText: targetText,
         newText: replaceText,
+        occurrence: parseOccurrence(flags),
         format: flags['format'] === 'scrapbox' ? 'scrapbox' : undefined,
         projectName: typeof flags['project'] === 'string' ? flags['project'] : undefined,
         compact,
@@ -472,6 +488,7 @@ export async function runCli(argv: string[]): Promise<void> {
       result = await handleDeleteLines(project, sid, {
         pageTitle,
         targetLineText: deleteTarget,
+        occurrence: parseOccurrence(flags),
         projectName: typeof flags['project'] === 'string' ? flags['project'] : undefined,
         compact,
       });
