@@ -86,6 +86,18 @@ Claude.ai → HTTPS → Cloudflare Tunnel → Docker Container (Express + MCP)
 
 環境変数 `COSENSE_NOTATION_CONFIG` にJSONファイルのパスを指定する。未指定時はデフォルト値が使われる。
 
+### カスタムルールをCosenseページで管理する
+
+環境変数 `COSENSE_NOTATION_PAGE` にページタイトルを指定すると、`get_notation_guide` はそのページの本文を取得して、ガイド末尾に「PROJECT CUSTOM RULES」（最優先ルール）として追記する。
+
+```bash
+COSENSE_NOTATION_PAGE=cosense-mcp記法ルール
+```
+
+- ルールはコードや設定ファイルではなく**Cosenseページとして編集**できる。ブラウザで直接書いてもいいし、MCP自身の`insert_lines`等でClaudeに書き換えさせてもいい（「今後はこう書いて」と言うだけでMCPが自分のルールを更新できる）
+- 変更は次の`get_notation_guide`呼び出しから即反映。サーバー再起動もコネクタ再登録も不要
+- ページが存在しない場合はガイドに「ページが見つからない（create_pageで作成できる）」と案内が入り、ベースのガイドはそのまま機能する
+
 ## セットアップ
 
 ### Claude.ai（Custom Connector + Docker）

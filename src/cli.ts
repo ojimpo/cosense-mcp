@@ -450,7 +450,10 @@ export async function runCli(argv: string[]): Promise<void> {
     }
 
     case 'guide': {
-      result = await handleGetNotationGuide();
+      // guide は project 未設定でも動く（カスタムルールページの取得だけスキップされる）
+      const project = (typeof flags['project'] === 'string' ? flags['project'] : undefined)
+        || process.env.COSENSE_PROJECT_NAME;
+      result = await handleGetNotationGuide(project, sid);
       break;
     }
 

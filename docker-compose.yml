@@ -10,6 +10,7 @@ services:
       - COSENSE_SID=${COSENSE_SID}
       - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN}
       - COSENSE_NOTATION_CONFIG=/app/notation.config.json
+      - COSENSE_NOTATION_PAGE=${COSENSE_NOTATION_PAGE:-}
     volumes:
       - ./notation.config.json:/app/notation.config.json:ro
     restart: unless-stopped

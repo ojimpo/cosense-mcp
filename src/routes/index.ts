@@ -124,7 +124,9 @@ export function setupRoutes(
         );
 
       case "get_notation_guide":
-        return handleGetNotationGuide();
+        return handleGetNotationGuide(projectName, cosenseSid, {
+          projectName: request.params.arguments?.projectName as string | undefined,
+        });
 
       case "get_smart_context":
         return handleGetSmartContext(

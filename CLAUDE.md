@@ -107,6 +107,7 @@ See README.md. Key variables:
 - `COSENSE_TOOL_SUFFIX` — Tool name suffix for multiple server instances
 - `COSENSE_CONVERT_NUMBERED_LISTS` — Convert numbered lists to bullet lists
 - `COSENSE_NOTATION_CONFIG` — Path to notation config JSON (heading levels, math, linking, custom rules)
+- `COSENSE_NOTATION_PAGE` — Cosense page title holding user-editable custom rules; appended to the `get_notation_guide` response as highest-priority rules (fetched per call, no restart needed)
 
 ## CI/CD & Release
 

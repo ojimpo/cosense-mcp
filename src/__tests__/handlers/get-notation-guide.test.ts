@@ -1,19 +1,32 @@
 import { handleGetNotationGuide } from '@/routes/handlers/get-notation-guide.js';
 
-describe('handleGetNotationGuide', () => {
-  const originalEnv = process.env.COSENSE_NOTATION_CONFIG;
+jest.mock('@/cosense.js', () => ({
+  getPage: jest.fn()
+}));
 
-  afterEach(() => {
-    if (originalEnv === undefined) {
-      delete process.env.COSENSE_NOTATION_CONFIG;
-    } else {
-      process.env.COSENSE_NOTATION_CONFIG = originalEnv;
-    }
+let mockedGetPage: jest.MockedFunction<typeof import('@/cosense.js').getPage>;
+beforeAll(async () => {
+  const cosenseModule = await import('@/cosense.js');
+  mockedGetPage = cosenseModule.getPage as jest.MockedFunction<typeof import('@/cosense.js').getPage>;
+});
+
+describe('handleGetNotationGuide', () => {
+  const originalNotationConfig = process.env.COSENSE_NOTATION_CONFIG;
+  const originalNotationPage = process.env.COSENSE_NOTATION_PAGE;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    delete process.env.COSENSE_NOTATION_CONFIG;
+    delete process.env.COSENSE_NOTATION_PAGE;
+  });
+
+  afterAll(() => {
+    if (originalNotationConfig !== undefined) process.env.COSENSE_NOTATION_CONFIG = originalNotationConfig;
+    if (originalNotationPage !== undefined) process.env.COSENSE_NOTATION_PAGE = originalNotationPage;
   });
 
   test('returns the notation guide with default config', async () => {
-    delete process.env.COSENSE_NOTATION_CONFIG;
-    const result = await handleGetNotationGuide();
+    const result = await handleGetNotationGuide('test-project', 'test-sid');
 
     expect(result.content).toHaveLength(1);
     expect(result.content[0]?.type).toBe('text');
@@ -24,10 +37,75 @@ describe('handleGetNotationGuide', () => {
     expect(text).toContain('MATH (KaTeX)');
     // Default maxHeadingLevel is 1
     expect(text).toContain('Do NOT use [** text]');
+    // COSENSE_NOTATION_PAGE 未設定ならカスタムルールには触れない
+    expect(text).not.toContain('PROJECT CUSTOM RULES');
+    expect(mockedGetPage).not.toHaveBeenCalled();
   });
 
-  test('does not set isError', async () => {
-    const result = await handleGetNotationGuide();
-    expect('isError' in result ? (result as { isError?: boolean }).isError : undefined).toBeUndefined();
+  describe('COSENSE_NOTATION_PAGE が設定されている場合', () => {
+    beforeEach(() => {
+      process.env.COSENSE_NOTATION_PAGE = 'notation-rules';
+    });
+
+    test('appends page content as PROJECT CUSTOM RULES', async () => {
+      mockedGetPage.mockResolvedValue({
+        lines: [
+          { text: 'notation-rules' },
+          { text: '箇条書きで簡潔に書く' },
+          { text: '日付は[2026/7/19]形式でリンクにする' },
+        ],
+      } as Awaited<ReturnType<typeof import('@/cosense.js').getPage>>);
+
+      const result = await handleGetNotationGuide('test-project', 'test-sid');
+      const text = result.content[0]?.text ?? '';
+
+      expect(mockedGetPage).toHaveBeenCalledWith('test-project', 'notation-rules', 'test-sid');
+      expect(text).toContain('PROJECT CUSTOM RULES');
+      expect(text).toContain('箇条書きで簡潔に書く');
+      expect(text).toContain('日付は[2026/7/19]形式でリンクにする');
+      // タイトル行はルールとして重複させない
+      expect(text).toContain('Source: Cosense page "notation-rules"');
+    });
+
+    test('notes when the rules page is missing', async () => {
+      mockedGetPage.mockResolvedValue(null);
+
+      const result = await handleGetNotationGuide('test-project', 'test-sid');
+      const text = result.content[0]?.text ?? '';
+
+      expect(text).toContain('was not found');
+      expect(text).toContain('create_page');
+    });
+
+    test('notes when the rules page is empty', async () => {
+      mockedGetPage.mockResolvedValue({
+        lines: [{ text: 'notation-rules' }],
+      } as Awaited<ReturnType<typeof import('@/cosense.js').getPage>>);
+
+      const result = await handleGetNotationGuide('test-project', 'test-sid');
+      const text = result.content[0]?.text ?? '';
+
+      expect(text).toContain('currently empty');
+    });
+
+    test('falls back to the base guide when fetch throws', async () => {
+      mockedGetPage.mockRejectedValue(new Error('network error'));
+
+      const result = await handleGetNotationGuide('test-project', 'test-sid');
+      const text = result.content[0]?.text ?? '';
+
+      expect(text).toContain('LINKS');
+      expect(text).toContain('failed to fetch');
+      expect('isError' in result ? (result as { isError?: boolean }).isError : undefined).toBeUndefined();
+    });
+
+    test('skips page fetch when no project name is available', async () => {
+      const result = await handleGetNotationGuide(undefined, undefined);
+      const text = result.content[0]?.text ?? '';
+
+      expect(mockedGetPage).not.toHaveBeenCalled();
+      expect(text).toContain('LINKS');
+      expect(text).not.toContain('PROJECT CUSTOM RULES');
+    });
   });
 });
