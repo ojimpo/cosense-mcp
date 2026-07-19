@@ -8,8 +8,9 @@ import { handleInsertLines } from './routes/handlers/insert-lines.js';
 import { handleReplaceLines } from './routes/handlers/replace-lines.js';
 import { handleDeleteLines } from './routes/handlers/delete-lines.js';
 import { handleGetSmartContext } from './routes/handlers/get-smart-context.js';
+import { handleGetNotationGuide } from './routes/handlers/get-notation-guide.js';
 
-const CLI_COMMANDS = ['get', 'list', 'search', 'create', 'url', 'insert', 'replace', 'delete', 'context'] as const;
+const CLI_COMMANDS = ['get', 'list', 'search', 'create', 'url', 'insert', 'replace', 'delete', 'context', 'guide'] as const;
 type CliCommand = typeof CLI_COMMANDS[number];
 
 interface ParsedArgs {
@@ -173,6 +174,14 @@ Options:
   --target=TEXT                  Exact text of the line to delete (required)
 
 ${COMMON_OPTIONS}`,
+
+  guide: `Usage: scrapbox-cosense-mcp guide [options]
+
+Show the Cosense/Scrapbox notation guide (headings, links, code blocks, etc.).
+Reflects COSENSE_NOTATION_CONFIG if set.
+
+Options:
+  --json                         Output as JSON`,
 };
 
 function printHelp(command?: string): void {
@@ -197,6 +206,7 @@ Commands:
   replace <title>                Replace a line in a page
   delete <title>                 Delete a line from a page
   context <title>                Get smart context (related pages)
+  guide                          Show the Cosense notation guide
 
 ${COMMON_OPTIONS}
 
@@ -436,6 +446,11 @@ export async function runCli(argv: string[]): Promise<void> {
         projectName: typeof flags['project'] === 'string' ? flags['project'] : undefined,
         compact,
       });
+      break;
+    }
+
+    case 'guide': {
+      result = await handleGetNotationGuide();
       break;
     }
 

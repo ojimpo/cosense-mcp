@@ -59,8 +59,8 @@ function buildHeadingGuide(maxLevel: number): string {
   return lines.join('\n');
 }
 
-/** Build the full body/text description for create_page */
-export function buildFullDescription(config: NotationConfig): string {
+/** Build the full notation guide returned by the get_notation_guide tool */
+export function buildNotationGuide(config: NotationConfig): string {
   const maxLevel: number = config.maxHeadingLevel ?? DEFAULT_CONFIG.maxHeadingLevel;
   const mathEnabled: boolean = config.mathEnabled ?? DEFAULT_CONFIG.mathEnabled;
   const aggressiveLinking: boolean = config.aggressiveLinking ?? DEFAULT_CONFIG.aggressiveLinking;
@@ -129,45 +129,5 @@ ${buildHeadingGuide(maxLevel)}
   }
   sections.push(`RULES:\n${rules.map(r => ` ${r}`).join('\n')}`);
 
-  return `Content in Scrapbox/Cosense syntax. ALWAYS use format='scrapbox'.\n\n${sections.join('\n\n')}`;
-}
-
-/** Build the compact description for insert_lines/replace_lines text fields */
-export function buildCompactDescription(config: NotationConfig, suffix: string): string {
-  const maxLevel: number = config.maxHeadingLevel ?? DEFAULT_CONFIG.maxHeadingLevel;
-  const mathEnabled: boolean = config.mathEnabled ?? DEFAULT_CONFIG.mathEnabled;
-  const aggressiveLinking: boolean = config.aggressiveLinking ?? DEFAULT_CONFIG.aggressiveLinking;
-  const blankLineBeforeHeading: boolean = config.blankLineBeforeHeading ?? DEFAULT_CONFIG.blankLineBeforeHeading;
-
-  const lines: string[] = [
-    `ALWAYS use format='scrapbox'. Same notation as create_page body:`,
-  ];
-
-  if (aggressiveLinking) {
-    lines.push(' [page title] = internal link (use aggressively for all nouns/concepts/tools)');
-  } else {
-    lines.push(' [page title] = internal link');
-  }
-
-  if (maxLevel === 1) {
-    lines.push(' [* heading] = section heading (the ONLY heading size — never use [** ] or larger)');
-  } else {
-    lines.push(` [* heading] = section heading (up to [${'*'.repeat(maxLevel)} ] max)`);
-  }
-
-  if (blankLineBeforeHeading) {
-    lines.push(' Space-indented lines = bullets. One blank line BEFORE each heading (except the first); zero between heading and its content; no other blank lines.');
-  } else {
-    lines.push(' Space-indented lines = bullets. No unnecessary blank lines.');
-  }
-  lines.push(' Emphasis: [* text] (works in table cells too). [/ italic], [- strikethrough], `inline code`. Do NOT use [[ ]] for bold.');
-  lines.push(' Code block: "code:filename" line, then body lines indented ONE space deeper. Keep "code:" at the same indent as sibling bullets — mismatched indent breaks rendering.');
-
-  if (mathEnabled) {
-    lines.push(' Math: [$ formula] (inline), [$$ formula] (block)');
-  }
-
-  lines.push(` ${suffix}`);
-
-  return lines.join('\n');
+  return `Cosense/Scrapbox notation guide — apply these rules to ALL page content. ALWAYS use format='scrapbox'.\n\n${sections.join('\n\n')}`;
 }

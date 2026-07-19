@@ -9,7 +9,7 @@ worldnine/scrapbox-cosense-mcp のフォーク。Claude.ai Custom Connector対�
 - `Dockerfile` — node:22-slim マルチステージビルド
 - `docker-compose.yml` — `.env`で環境変数管理、ポート4100で稼働中
 - デフォルトformatを`scrapbox`に変更（`create-page.ts`、`insert-lines.ts`）
-- tool descriptionにCosense記法ガイドを埋め込み（リンク、見出しサイズ、インデント等）
+- Cosense記法ガイドは`get_notation_guide`ツールのレスポンスで提供（descriptionには最小限のコア記法＋「先にget_notation_guideを呼ぶ」指示のみ）
 - 不明セッションに404を返してクライアントの再接続を誘導
 
 ## デプロイ状況
@@ -25,8 +25,9 @@ npm run build
 docker compose down && docker compose build && docker compose up -d
 ```
 
-tool descriptionを変更した場合、Claude.ai側でコネクタを削除→再追加するとtools/listが再取得される。
-ただしformatデフォルト等のハンドラー側ロジック変更はサーバー再起動のみで反映。
+tool description（ツール名・スキーマ含む）を変更した場合、Claude.ai側でコネクタを削除→再追加するとtools/listが再取得される。
+ただしハンドラー側ロジック変更（formatデフォルト、`get_notation_guide`が返す記法ガイド本文等）はサーバー再起動のみで反映。
+記法ガイドを育てる変更は`buildNotationGuide`（`src/utils/notation-config.ts`）側に入れること — descriptionを触ると再登録が必要になる。
 
 ## フォーク元の更新取り込み
 
@@ -47,7 +48,7 @@ npm run inspector    # Debug with MCP Inspector
 
 ## Architecture
 
-### Tools (9)
+### Tools (10)
 
 | Tool | Description | Auth |
 |---|---|---|
@@ -60,10 +61,11 @@ npm run inspector    # Debug with MCP Inspector
 | `replace_lines` | Replace a line (exact unique match). Supports 1→N line expansion | SID |
 | `delete_lines` | Delete a line (exact unique match) | SID |
 | `get_smart_context` | Get page + linked pages (1-hop/2-hop) in AI-optimized format | SID |
+| `get_notation_guide` | Return the full Cosense notation guide (call before writing content) | - |
 
 ### CLI
 
-All tools are also available as CLI subcommands (`get`, `list`, `search`, `create`, `url`, `insert`, `replace`, `delete`, `context`). Run `scrapbox-cosense-mcp <command> --help` for usage. Key flags:
+All tools are also available as CLI subcommands (`get`, `list`, `search`, `create`, `url`, `insert`, `replace`, `delete`, `context`, `guide`). Run `scrapbox-cosense-mcp <command> --help` for usage. Key flags:
 
 - `--compact` — Token-efficient output (85% smaller for list)
 - `--json` — JSON output

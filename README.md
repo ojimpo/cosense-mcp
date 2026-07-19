@@ -56,12 +56,15 @@ Claude.ai → HTTPS → Cloudflare Tunnel → Docker Container (Express + MCP)
 | `delete_lines` | 指定行を削除（完全一致・ユニークマッチ） | 必須 |
 | `get_smart_context` | ページと関連ページ（1-2ホップ）をまとめて取得 | 必須 |
 | `get_page_url` | ページURLの生成 | 不要 |
+| `get_notation_guide` | Cosense記法ガイドの取得（書き込み前に呼ぶ） | 不要 |
 
-`create_page`、`insert_lines`、`replace_lines`はデフォルトでCosense記法。tool descriptionにCosense記法のルール（リンク、見出し、インデント、KaTeX数式等）を埋め込んであるので、Claude.aiは指示なしでも`[リンク]`を積極的に使い、適切な見出しサイズで書く。
+`create_page`、`insert_lines`、`replace_lines`はデフォルトでCosense記法。記法ルール（リンク、見出し、インデント、KaTeX数式等）の本体は`get_notation_guide`ツールのレスポンスで返し、各tool descriptionには「書き込み前に`get_notation_guide`を呼ぶこと」という指示と最小限のコア記法だけを置いている。
+
+この構成にしているのは、Claude.aiがtools/list（ツール名・description）をプラットフォーム側でキャッシュし、コネクタを削除→再追加しないと再取得されないため。ガイド本文をランタイムレスポンスに置くことで、記法ルールの改善がサーバー再起動だけで即反映される。
 
 ### 記法カスタマイズ
 
-tool descriptionに埋め込まれる記法ガイドは、JSONファイルでカスタマイズできる。
+`get_notation_guide`が返す記法ガイドは、JSONファイルでカスタマイズできる。
 
 ```json
 {
@@ -79,7 +82,7 @@ tool descriptionに埋め込まれる記法ガイドは、JSONファイルでカ
 | `mathEnabled` | `true` | KaTeX数式記法（`[$ ]` / `[$$ ]`）のガイドを含める |
 | `aggressiveLinking` | `true` | 名詞・概念を積極的にリンクする指示を含める |
 | `blankLineBeforeHeading` | `false` | 各見出しの**直前**に空行を1行入れてセクションを区切る（見出しと直下の本文は密着のまま。先頭の見出しは除外） |
-| `customRules` | — | 追加のルールをtool descriptionに付与 |
+| `customRules` | — | 追加のルールを記法ガイドに付与 |
 
 環境変数 `COSENSE_NOTATION_CONFIG` にJSONファイルのパスを指定する。未指定時はデフォルト値が使われる。
 

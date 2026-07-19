@@ -20,7 +20,6 @@ import {
 import { listPages, getPage, toReadablePage } from "./cosense.js";
 import { formatYmd } from './utils/format.js';
 import { setupRoutes } from './routes/index.js';
-import { loadNotationConfig, buildFullDescription, buildCompactDescription } from './utils/notation-config.js';
 
 // 環境変数のデフォルト値と検証用の定数
 const FETCH_PAGE_LIMIT = 100;  // 固定で100件取得
@@ -97,10 +96,12 @@ const resources = await (async () => {
 })();
 
 // 記法カスタマイズ設定の読み込み
-const notationConfig = loadNotationConfig();
-const bodyDescription = buildFullDescription(notationConfig);
-const insertTextDescription = buildCompactDescription(notationConfig, 'Can contain multiple lines separated by newline characters.');
-const replaceTextDescription = buildCompactDescription(notationConfig, 'Can contain multiple lines (replaces 1 line with multiple lines).');
+// 記法ガイド本文は get_notation_guide ツールのレスポンスで返す（descriptionを安定させ、
+// ガイド更新時にClaude.ai側のtools/list再取得（コネクタ再登録）を不要にするため）
+const notationPointer = "ALWAYS use format='scrapbox'. REQUIRED: call get_notation_guide once per conversation BEFORE composing content, and follow it exactly — it contains the current notation rules (headings, links, blank lines, code blocks, project-specific rules). Core syntax: [page title] = internal link, [* text] = heading/emphasis, space-indented lines = bullets.";
+const bodyDescription = `Page content in Scrapbox/Cosense syntax. ${notationPointer} Do NOT duplicate the page title in the body (auto-displayed at top).`;
+const insertTextDescription = `${notationPointer} Can contain multiple lines separated by newline characters.`;
+const replaceTextDescription = `${notationPointer} Can contain multiple lines (replaces 1 line with multiple lines).`;
 
 // サーバー生成ファクトリ（HTTP transportでセッションごとに新しいサーバーを作成するため関数化）
 function createServer(): Server {
@@ -115,7 +116,8 @@ function createServer(): Server {
     {
       capabilities: {
         resources: {},
-        tools: {},
+        // listChanged: 現状Anthropic製クライアントは通知を無視するが、仕様準拠のため宣言しておく
+        tools: { listChanged: true },
         prompts: {},
       },
     },
@@ -170,6 +172,15 @@ function createServer(): Server {
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     const tools = [
+        {
+          name: getToolName("get_notation_guide"),
+          description: `Get the current Cosense/Scrapbox notation guide for ${SERVICE_LABEL} (headings, links, lists, code blocks, math, blank-line policy, project-specific rules). ALWAYS call this once per conversation BEFORE writing or editing page content with create_page, insert_lines, or replace_lines. The guide reflects the server's current configuration and can change at any time — do not rely on remembered rules.`,
+          inputSchema: {
+            type: "object",
+            properties: {},
+            required: [],
+          },
+        },
         {
           name: getToolName("create_page"),
           description: `Create a new page in Scrapbox project on ${SERVICE_LABEL}. Creates a new page with the specified title and optional body text. Returns the page creation URL without opening browser. Uses ${projectName} project as default if projectName is not specified.`,

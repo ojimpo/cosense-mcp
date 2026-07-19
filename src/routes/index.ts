@@ -9,6 +9,7 @@ import { handleInsertLines } from './handlers/insert-lines.js';
 import { handleReplaceLines } from './handlers/replace-lines.js';
 import { handleDeleteLines } from './handlers/delete-lines.js';
 import { handleGetSmartContext } from './handlers/get-smart-context.js';
+import { handleGetNotationGuide } from './handlers/get-notation-guide.js';
 
 // ツール名正規化ヘルパー
 function normalizeToolName(toolName: string, toolSuffix?: string): string {
@@ -121,6 +122,9 @@ export function setupRoutes(
             projectName: request.params.arguments?.projectName as string | undefined,
           }
         );
+
+      case "get_notation_guide":
+        return handleGetNotationGuide();
 
       case "get_smart_context":
         return handleGetSmartContext(
