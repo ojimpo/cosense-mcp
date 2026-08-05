@@ -14,9 +14,14 @@ MCP server for [Cosense (formerly Scrapbox)](https://cosen.se).
 | `create_page` | Create a page via WebSocket API with Markdown/Scrapbox body | Yes |
 | `get_page_url` | Generate direct URL for a page | No |
 | `insert_lines` | Insert text after a specified line in a page | Yes |
+| `edit_lines` | Replace an exact-match line (first match, or all with `matchAll`) | Yes |
 | `get_smart_context` | Get a page and its linked pages (1-hop/2-hop) in AI-optimized format | Yes |
 
-`create_page` and `insert_lines` support a `format` parameter (`"markdown"` or `"scrapbox"`) to control content conversion.
+`create_page`, `insert_lines`, and `edit_lines` support a `format` parameter (`"markdown"` or `"scrapbox"`) to control content conversion.
+
+`edit_lines` replaces only the first matching line by default. Set `matchAll: true` to replace every occurrence. The default is deliberately conservative: a line such as a bullet marker or a blank line can repeat many times in a page, and replacing all of them at once is rarely what the caller intended.
+
+Note that `insert_lines` and `edit_lines` behave differently when the target line is absent. `insert_lines` appends to the end of the page, because "add this text somewhere" still has a reasonable outcome. `edit_lines` returns an error and leaves the page untouched, because "replace this specific line" has no meaningful fallback — appending the replacement would silently produce a page the caller never asked for.
 
 ## Quick Start
 
@@ -129,6 +134,7 @@ scrapbox-cosense-mcp search "keyword"
 scrapbox-cosense-mcp list --sort=updated --limit=20
 scrapbox-cosense-mcp create "New Page" --body="Markdown content"
 scrapbox-cosense-mcp insert "Page" --after="target line" --text="new text"
+scrapbox-cosense-mcp edit "Page" --target="old line" --text="new text"
 scrapbox-cosense-mcp url "Page Title"
 ```
 
