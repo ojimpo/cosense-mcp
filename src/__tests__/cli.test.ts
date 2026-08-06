@@ -14,6 +14,7 @@ import * as createPageHandler from '@/routes/handlers/create-page.js';
 import * as getPageUrlHandler from '@/routes/handlers/get-page-url.js';
 import * as insertLinesHandler from '@/routes/handlers/insert-lines.js';
 import * as editLinesHandler from '@/routes/handlers/edit-lines.js';
+import * as deletePageHandler from '@/routes/handlers/delete-page.js';
 
 jest.mock('@/routes/handlers/get-page.js');
 jest.mock('@/routes/handlers/list-pages.js');
@@ -22,6 +23,7 @@ jest.mock('@/routes/handlers/create-page.js');
 jest.mock('@/routes/handlers/get-page-url.js');
 jest.mock('@/routes/handlers/insert-lines.js');
 jest.mock('@/routes/handlers/edit-lines.js');
+jest.mock('@/routes/handlers/delete-page.js');
 
 const mockedGetPage = getPageHandler as jest.Mocked<typeof getPageHandler>;
 const mockedListPages = listPagesHandler as jest.Mocked<typeof listPagesHandler>;
@@ -30,6 +32,7 @@ const mockedCreatePage = createPageHandler as jest.Mocked<typeof createPageHandl
 const mockedGetPageUrl = getPageUrlHandler as jest.Mocked<typeof getPageUrlHandler>;
 const mockedInsertLines = insertLinesHandler as jest.Mocked<typeof insertLinesHandler>;
 const mockedEditLines = editLinesHandler as jest.Mocked<typeof editLinesHandler>;
+const mockedDeletePage = deletePageHandler as jest.Mocked<typeof deletePageHandler>;
 
 // Mock process.exit to prevent test process from exiting
 const mockExit = jest.spyOn(process, 'exit').mockImplementation((() => {
@@ -373,6 +376,50 @@ describe('CLI', () => {
         // process.exit
       }
       expect(stderrOutput).toContain('--text=TEXT or --text-file=PATH is required');
+    });
+  });
+
+  describe('delete command', () => {
+    it('should call handleDeletePage with all params', async () => {
+      mockedDeletePage.handleDeletePage.mockResolvedValue(successResult);
+      try {
+        await runCli(['delete', 'My Page']);
+      } catch {
+        // process.exit
+      }
+      expect(mockedDeletePage.handleDeletePage).toHaveBeenCalledWith(
+        'test-project',
+        'test-sid',
+        {
+          pageTitle: 'My Page',
+          dryRun: false,
+          projectName: undefined,
+          compact: false,
+        }
+      );
+    });
+
+    it('should pass dryRun when --dry-run flag is set', async () => {
+      mockedDeletePage.handleDeletePage.mockResolvedValue(successResult);
+      try {
+        await runCli(['delete', 'My Page', '--dry-run']);
+      } catch {
+        // process.exit
+      }
+      expect(mockedDeletePage.handleDeletePage).toHaveBeenCalledWith(
+        'test-project',
+        'test-sid',
+        expect.objectContaining({ dryRun: true })
+      );
+    });
+
+    it('should error when page title is missing', async () => {
+      try {
+        await runCli(['delete']);
+      } catch {
+        // process.exit
+      }
+      expect(stderrOutput).toContain('Page title is required');
     });
   });
 

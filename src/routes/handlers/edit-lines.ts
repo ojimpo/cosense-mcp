@@ -43,6 +43,8 @@ export async function handleEditLines(
     let replacedCount = 0;
 
     const result = await patch(projectName, params.pageTitle, (lines: BaseLine[]) => {
+      // patchがコンフリクトでリトライした場合に前回の結果が残らないようリセットする
+      replacedCount = 0;
       const matchedIndices: number[] = [];
       for (let i = 0; i < lines.length; i++) {
         if (lines[i]?.text === params.targetLineText) {

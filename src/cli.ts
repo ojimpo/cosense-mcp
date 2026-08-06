@@ -6,9 +6,10 @@ import { handleCreatePage } from './routes/handlers/create-page.js';
 import { handleGetPageUrl } from './routes/handlers/get-page-url.js';
 import { handleInsertLines } from './routes/handlers/insert-lines.js';
 import { handleEditLines } from './routes/handlers/edit-lines.js';
+import { handleDeletePage } from './routes/handlers/delete-page.js';
 import { handleGetSmartContext } from './routes/handlers/get-smart-context.js';
 
-const CLI_COMMANDS = ['get', 'list', 'search', 'create', 'url', 'insert', 'edit', 'context'] as const;
+const CLI_COMMANDS = ['get', 'list', 'search', 'create', 'url', 'insert', 'edit', 'delete', 'context'] as const;
 type CliCommand = typeof CLI_COMMANDS[number];
 
 interface ParsedArgs {
@@ -160,6 +161,20 @@ Options:
   --all                          Replace every matching line (default: first only)
 
 ${COMMON_OPTIONS}`,
+
+  delete: `Usage: scrapbox-cosense-mcp delete <title> [options]
+
+Delete a page by emptying every line. Requires COSENSE_SID and
+COSENSE_ENABLE_DELETE=true. There is no undo — run with --dry-run first.
+Fails if the page does not exist.
+
+Arguments:
+  <title>                        Page title (required)
+
+Options:
+  --dry-run                      Report what would be removed without deleting
+
+${COMMON_OPTIONS}`,
 };
 
 function printHelp(command?: string): void {
@@ -182,6 +197,7 @@ Commands:
   url <title>                    Get page URL
   insert <title>                 Insert lines into a page
   edit <title>                   Replace an exact-match line in a page
+  delete <title>                 Delete a page (requires COSENSE_ENABLE_DELETE)
   context <title>                Get smart context (related pages)
 
 ${COMMON_OPTIONS}
@@ -192,6 +208,7 @@ Environment Variables:
   COSENSE_PROJECT_NAME           Target project (required for most commands)
   COSENSE_SID                    Session ID for private projects
   COSENSE_CONVERT_NUMBERED_LISTS Convert numbered lists to bullet lists
+  COSENSE_ENABLE_DELETE          Set to true to enable the delete command
 `;
   process.stdout.write(help);
 }
@@ -420,6 +437,22 @@ export async function runCli(argv: string[]): Promise<void> {
         newText,
         format: flags['format'] === 'scrapbox' ? 'scrapbox' : undefined,
         matchAll: flags['all'] === true,
+        projectName: typeof flags['project'] === 'string' ? flags['project'] : undefined,
+        compact,
+      });
+      break;
+    }
+
+    case 'delete': {
+      const pageTitle = positional[0];
+      if (!pageTitle) {
+        process.stderr.write('Error: Page title is required. Usage: scrapbox-cosense-mcp delete <title>\n');
+        process.exit(2);
+      }
+      const project = requireProjectName(flags);
+      result = await handleDeletePage(project, sid, {
+        pageTitle,
+        dryRun: flags['dry-run'] === true,
         projectName: typeof flags['project'] === 'string' ? flags['project'] : undefined,
         compact,
       });
