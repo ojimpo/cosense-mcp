@@ -91,8 +91,8 @@ jobs:
           echo "already_published=false" >> "$GITHUB_OUTPUT"
         fi
 
+    # Trusted Publishing (OIDC) で認証する。トークン不要（id-token: write 権限と
+    # npmjs.com 側の Trusted Publisher 登録が前提）。provenance は自動で付与される
     - name: npm に公開
       if: steps.check-npm.outputs.already_published != 'true'
-      run: npm publish --provenance
-      env:
-        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      run: npm publish
