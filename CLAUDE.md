@@ -39,6 +39,10 @@ All tools are also available as CLI subcommands (`get`, `list`, `search`, `creat
 
 `skills/scrapbox/SKILL.md` defines a Claude Code skill that wraps the CLI. When users invoke `/cosense`, Claude Code reads SKILL.md and executes CLI commands via Bash. Keep SKILL.md concise — details should be discoverable via `--help`.
 
+### Claude Code Plugin
+
+`.claude-plugin/` (plugin.json + marketplace.json) enables installation via `/plugin marketplace add worldnine/scrapbox-cosense-mcp`. The marketplace resolves the plugin from the **npm package**, so `.claude-plugin/`, `.mcp.json`, and `skills/` must be listed in package.json `files` — a plugin fix only takes effect after the next npm release.
+
 ### Desktop Extensions (.mcpb)
 
 `manifest.json` + `.mcpbignore` enable Claude Desktop Extensions packaging. The `.mcpb` file is auto-built and attached to GitHub Releases by `release-mcpb.yml`. To build locally: `npm install --omit=dev && npx @anthropic-ai/mcpb pack`.
@@ -85,7 +89,7 @@ See README.md. Key variables:
 
 ### Release Process
 
-1. Create `release/vX.Y.Z` branch, bump version in `package.json` + `manifest.json`
+1. Create `release/vX.Y.Z` branch, bump version in `package.json` + `manifest.json` + `.claude-plugin/plugin.json`
 2. Create PR → CI passes → merge
 3. Everything after merge is automatic (tag → npm → GitHub Release → .mcpb)
 
