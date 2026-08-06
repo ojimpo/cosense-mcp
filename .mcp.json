@@ -4,8 +4,8 @@
       "command": "npx",
       "args": ["-y", "scrapbox-cosense-mcp"],
       "env": {
-        "COSENSE_PROJECT_NAME": "",
-        "COSENSE_SID": ""
+        "COSENSE_PROJECT_NAME": "${COSENSE_PROJECT_NAME:-}",
+        "COSENSE_SID": "${COSENSE_SID:-}"
       }
     }
   }
