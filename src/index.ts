@@ -331,6 +331,41 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ["pageTitle", "targetLineText", "text"],
         },
       },
+      {
+        name: getToolName("edit_lines"),
+        description: `Replace one or more lines in a Scrapbox page on ${SERVICE_LABEL}. Matches the target line by exact text and substitutes it with new content (which may span multiple lines). By default only the first match is replaced; set matchAll to replace every occurrence. Returns an error if no match is found. Requires COSENSE_SID. Uses ${projectName} project as default if projectName is not specified.`,
+        inputSchema: {
+          type: "object",
+          properties: {
+            pageTitle: {
+              type: "string",
+              description: "Title of the page to modify",
+            },
+            targetLineText: {
+              type: "string",
+              description: "Exact text of the line to replace. Matching is case-sensitive and requires a full-line exact match.",
+            },
+            newText: {
+              type: "string",
+              description: "Replacement content in markdown format (default) or Scrapbox syntax (when format is 'scrapbox'). May contain multiple lines separated by newline characters.",
+            },
+            projectName: {
+              type: "string",
+              description: `Target project name. If not specified, defaults to '${projectName}'.`,
+            },
+            format: {
+              type: "string",
+              enum: ["markdown", "scrapbox"],
+              description: "Content format of newText. 'markdown' (default) converts Markdown to Scrapbox syntax. 'scrapbox' passes content through as-is, preserving Scrapbox-native indentation and syntax.",
+            },
+            matchAll: {
+              type: "boolean",
+              description: "If true, replace every line matching targetLineText. Defaults to false (replace only the first match).",
+            },
+          },
+          required: ["pageTitle", "targetLineText", "newText"],
+        },
+      },
     ];
   
   

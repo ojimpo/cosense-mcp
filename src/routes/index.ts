@@ -7,6 +7,7 @@ import { handleCreatePage } from './handlers/create-page.js';
 import { handleGetPageUrl } from './handlers/get-page-url.js';
 import { handleInsertLines } from './handlers/insert-lines.js';
 import { handleGetSmartContext } from './handlers/get-smart-context.js';
+import { handleEditLines } from './handlers/edit-lines.js';
 
 // ツール名正規化ヘルパー
 function normalizeToolName(toolName: string, toolSuffix?: string): string {
@@ -93,6 +94,21 @@ export function setupRoutes(
             text: String(request.params.arguments?.text),
             projectName: request.params.arguments?.projectName as string | undefined,
             format: (request.params.arguments?.format as "markdown" | "scrapbox" | undefined) ?? undefined
+          }
+        );
+
+      case "edit_lines":
+        return handleEditLines(
+          projectName,
+          cosenseSid,
+          {
+            pageTitle: String(request.params.arguments?.pageTitle),
+            targetLineText: String(request.params.arguments?.targetLineText),
+            newText: String(request.params.arguments?.newText),
+            projectName: request.params.arguments?.projectName as string | undefined,
+            format: (request.params.arguments?.format as "markdown" | "scrapbox" | undefined) ?? undefined,
+            matchAll: request.params.arguments?.matchAll as boolean | undefined,
+            compact: request.params.arguments?.compact as boolean | undefined,
           }
         );
 

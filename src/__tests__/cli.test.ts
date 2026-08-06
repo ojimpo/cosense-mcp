@@ -13,6 +13,7 @@ import * as searchPagesHandler from '@/routes/handlers/search-pages.js';
 import * as createPageHandler from '@/routes/handlers/create-page.js';
 import * as getPageUrlHandler from '@/routes/handlers/get-page-url.js';
 import * as insertLinesHandler from '@/routes/handlers/insert-lines.js';
+import * as editLinesHandler from '@/routes/handlers/edit-lines.js';
 
 jest.mock('@/routes/handlers/get-page.js');
 jest.mock('@/routes/handlers/list-pages.js');
@@ -20,6 +21,7 @@ jest.mock('@/routes/handlers/search-pages.js');
 jest.mock('@/routes/handlers/create-page.js');
 jest.mock('@/routes/handlers/get-page-url.js');
 jest.mock('@/routes/handlers/insert-lines.js');
+jest.mock('@/routes/handlers/edit-lines.js');
 
 const mockedGetPage = getPageHandler as jest.Mocked<typeof getPageHandler>;
 const mockedListPages = listPagesHandler as jest.Mocked<typeof listPagesHandler>;
@@ -27,6 +29,7 @@ const mockedSearchPages = searchPagesHandler as jest.Mocked<typeof searchPagesHa
 const mockedCreatePage = createPageHandler as jest.Mocked<typeof createPageHandler>;
 const mockedGetPageUrl = getPageUrlHandler as jest.Mocked<typeof getPageUrlHandler>;
 const mockedInsertLines = insertLinesHandler as jest.Mocked<typeof insertLinesHandler>;
+const mockedEditLines = editLinesHandler as jest.Mocked<typeof editLinesHandler>;
 
 // Mock process.exit to prevent test process from exiting
 const mockExit = jest.spyOn(process, 'exit').mockImplementation((() => {
@@ -310,6 +313,62 @@ describe('CLI', () => {
     it('should error when --text is missing', async () => {
       try {
         await runCli(['insert', 'My Page', '--after=line']);
+      } catch {
+        // process.exit
+      }
+      expect(stderrOutput).toContain('--text=TEXT or --text-file=PATH is required');
+    });
+  });
+
+  describe('edit command', () => {
+    it('should call handleEditLines with all params', async () => {
+      mockedEditLines.handleEditLines.mockResolvedValue(successResult);
+      try {
+        await runCli(['edit', 'My Page', '--target=old line', '--text=new content']);
+      } catch {
+        // process.exit
+      }
+      expect(mockedEditLines.handleEditLines).toHaveBeenCalledWith(
+        'test-project',
+        'test-sid',
+        {
+          pageTitle: 'My Page',
+          targetLineText: 'old line',
+          newText: 'new content',
+          format: undefined,
+          matchAll: false,
+          projectName: undefined,
+          compact: false,
+        }
+      );
+    });
+
+    it('should pass matchAll when --all flag is set', async () => {
+      mockedEditLines.handleEditLines.mockResolvedValue(successResult);
+      try {
+        await runCli(['edit', 'My Page', '--target=old line', '--text=new content', '--all']);
+      } catch {
+        // process.exit
+      }
+      expect(mockedEditLines.handleEditLines).toHaveBeenCalledWith(
+        'test-project',
+        'test-sid',
+        expect.objectContaining({ matchAll: true })
+      );
+    });
+
+    it('should error when --target is missing', async () => {
+      try {
+        await runCli(['edit', 'My Page', '--text=content']);
+      } catch {
+        // process.exit
+      }
+      expect(stderrOutput).toContain('--target=TEXT is required');
+    });
+
+    it('should error when --text is missing', async () => {
+      try {
+        await runCli(['edit', 'My Page', '--target=line']);
       } catch {
         // process.exit
       }

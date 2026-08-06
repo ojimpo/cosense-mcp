@@ -5,9 +5,10 @@ import { handleSearchPages } from './routes/handlers/search-pages.js';
 import { handleCreatePage } from './routes/handlers/create-page.js';
 import { handleGetPageUrl } from './routes/handlers/get-page-url.js';
 import { handleInsertLines } from './routes/handlers/insert-lines.js';
+import { handleEditLines } from './routes/handlers/edit-lines.js';
 import { handleGetSmartContext } from './routes/handlers/get-smart-context.js';
 
-const CLI_COMMANDS = ['get', 'list', 'search', 'create', 'url', 'insert', 'context'] as const;
+const CLI_COMMANDS = ['get', 'list', 'search', 'create', 'url', 'insert', 'edit', 'context'] as const;
 type CliCommand = typeof CLI_COMMANDS[number];
 
 interface ParsedArgs {
@@ -142,6 +143,23 @@ Options:
   --format=FORMAT                Text format: markdown (default) | scrapbox
 
 ${COMMON_OPTIONS}`,
+
+  edit: `Usage: scrapbox-cosense-mcp edit <title> --target=TEXT --text=TEXT [options]
+
+Replace a line matched by exact text with new content. Requires COSENSE_SID.
+If no line matches, the command fails without modifying the page.
+
+Arguments:
+  <title>                        Page title (required)
+
+Options:
+  --target=TEXT                  Exact text of the line to replace (required)
+  --text=TEXT                    Replacement text
+  --text-file=PATH               Read replacement text from file
+  --format=FORMAT                Text format: markdown (default) | scrapbox
+  --all                          Replace every matching line (default: first only)
+
+${COMMON_OPTIONS}`,
 };
 
 function printHelp(command?: string): void {
@@ -163,6 +181,7 @@ Commands:
   create <title>                 Create a new page
   url <title>                    Get page URL
   insert <title>                 Insert lines into a page
+  edit <title>                   Replace an exact-match line in a page
   context <title>                Get smart context (related pages)
 
 ${COMMON_OPTIONS}
@@ -367,6 +386,40 @@ export async function runCli(argv: string[]): Promise<void> {
         targetLineText: afterText,
         text,
         format: flags['format'] === 'scrapbox' ? 'scrapbox' : undefined,
+        projectName: typeof flags['project'] === 'string' ? flags['project'] : undefined,
+        compact,
+      });
+      break;
+    }
+
+    case 'edit': {
+      const pageTitle = positional[0];
+      if (!pageTitle) {
+        process.stderr.write('Error: Page title is required. Usage: scrapbox-cosense-mcp edit <title> --target=TEXT --text=TEXT\n');
+        process.exit(2);
+      }
+      const targetText = typeof flags['target'] === 'string' ? unescapeString(flags['target']) : undefined;
+      if (!targetText) {
+        process.stderr.write('Error: --target=TEXT is required. Usage: scrapbox-cosense-mcp edit <title> --target=TEXT --text=TEXT\n');
+        process.exit(2);
+      }
+      let newText: string | undefined;
+      if (typeof flags['text-file'] === 'string') {
+        newText = readFileContent(flags['text-file']);
+      } else if (typeof flags['text'] === 'string') {
+        newText = unescapeString(flags['text']);
+      }
+      if (!newText) {
+        process.stderr.write('Error: --text=TEXT or --text-file=PATH is required.\n');
+        process.exit(2);
+      }
+      const project = requireProjectName(flags);
+      result = await handleEditLines(project, sid, {
+        pageTitle,
+        targetLineText: targetText,
+        newText,
+        format: flags['format'] === 'scrapbox' ? 'scrapbox' : undefined,
+        matchAll: flags['all'] === true,
         projectName: typeof flags['project'] === 'string' ? flags['project'] : undefined,
         compact,
       });

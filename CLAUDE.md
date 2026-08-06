@@ -14,7 +14,7 @@ npm run inspector    # Debug with MCP Inspector
 
 ## Architecture
 
-### Tools (7)
+### Tools (8)
 
 | Tool | Description | Auth |
 |---|---|---|
@@ -24,11 +24,12 @@ npm run inspector    # Debug with MCP Inspector
 | `create_page` | Create new page. Rejects if page already exists | SID |
 | `get_page_url` | Generate URL from page title | - |
 | `insert_lines` | Insert text after a target line (exact match). Appends to end if not found | SID |
+| `edit_lines` | Replace a target line (exact match). Errors if not found. `matchAll` replaces every occurrence | SID |
 | `get_smart_context` | Get page + linked pages (1-hop/2-hop) in AI-optimized format | SID |
 
 ### CLI
 
-All tools are also available as CLI subcommands (`get`, `list`, `search`, `create`, `url`, `insert`, `context`). Run `scrapbox-cosense-mcp <command> --help` for usage. Key flags:
+All tools are also available as CLI subcommands (`get`, `list`, `search`, `create`, `url`, `insert`, `edit`, `context`). Run `scrapbox-cosense-mcp <command> --help` for usage. Key flags:
 
 - `--compact` — Token-efficient output (85% smaller for list)
 - `--json` — JSON output
@@ -55,9 +56,11 @@ All tools are also available as CLI subcommands (`get`, `list`, `search`, `creat
 
 ### Design Decisions
 
-- **WebSocket API (`@cosense/std`)** is used for `create_page` / `insert_lines` because the REST API has no page creation/editing endpoints
+- **WebSocket API (`@cosense/std`)** is used for `create_page` / `insert_lines` / `edit_lines` because the REST API has no page creation/editing endpoints
 - **`create_page` rejects existing pages** (`persistent === true`). Without this check, `patch()` silently replaces all content since it's a diff-update API
 - **`insert_lines` uses exact match**. Partial match risks inserting at unintended lines
+- **`edit_lines` defaults to `matchAll: false`**. Repeated lines (bullet markers, blank lines) are common, so replacing every occurrence by default would exceed what the caller asked for
+- **`insert_lines` and `edit_lines` differ when the target is missing**, deliberately. `insert_lines` appends to the end, since "add this text" still has a sensible landing spot. `edit_lines` errors and leaves the page untouched, since "replace this line" has no fallback — appending would silently produce a page nobody asked for
 - **`patch()` returns `Result<string, PushError>`**, not throw. Must check `result.ok`
 - **Default sort is `updated`**. Aligned across API, display, and user expectations
 
