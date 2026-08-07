@@ -14,7 +14,7 @@ npm run inspector    # Debug with MCP Inspector
 
 ## Architecture
 
-### Tools (8)
+### Tools (9, or 8 without `COSENSE_ENABLE_DELETE`)
 
 | Tool | Description | Auth |
 |---|---|---|
@@ -25,11 +25,12 @@ npm run inspector    # Debug with MCP Inspector
 | `get_page_url` | Generate URL from page title | - |
 | `insert_lines` | Insert text after a target line (exact match). Appends to end if not found | SID |
 | `edit_lines` | Replace a target line (exact match). Errors if not found. `matchAll` replaces every occurrence | SID |
+| `delete_page` | Delete a page by emptying every line. Registered only when `COSENSE_ENABLE_DELETE=true`. Errors if the page does not exist. `dryRun` previews | SID |
 | `get_smart_context` | Get page + linked pages (1-hop/2-hop) in AI-optimized format | SID |
 
 ### CLI
 
-All tools are also available as CLI subcommands (`get`, `list`, `search`, `create`, `url`, `insert`, `edit`, `context`). Run `scrapbox-cosense-mcp <command> --help` for usage. Key flags:
+All tools are also available as CLI subcommands (`get`, `list`, `search`, `create`, `url`, `insert`, `edit`, `delete`, `context`). `delete` requires `COSENSE_ENABLE_DELETE=true` and supports `--dry-run`. Run `scrapbox-cosense-mcp <command> --help` for usage. Key flags:
 
 - `--compact` — Token-efficient output (85% smaller for list)
 - `--json` — JSON output
@@ -64,6 +65,9 @@ All tools are also available as CLI subcommands (`get`, `list`, `search`, `creat
 - **`create_page` rejects existing pages** (`persistent === true`). Without this check, `patch()` silently replaces all content since it's a diff-update API
 - **`insert_lines` uses exact match**. Partial match risks inserting at unintended lines
 - **`edit_lines` defaults to `matchAll: false`**. Repeated lines (bullet markers, blank lines) are common, so replacing every occurrence by default would exceed what the caller asked for
+- **`delete_page` is gated by `COSENSE_ENABLE_DELETE`** at tool-registration time, not just at call time. This server is often placed in a shared MCP configuration, so an unset variable means the tool never appears in the tool list and cannot be called by mistake. The handler checks the variable again, so the CLI and direct calls are covered too
+- **`delete_page` checks existence before deleting**. The REST API returns a title line even for a page that was never created, so line count cannot tell existence apart — `persistent` does, the same way `create_page` decides. Without this check a delete against a missing page reports success
+- **`delete_page` supports `dryRun`**, which reports the line count and the first five lines without calling `patch()` at all. Deletion has no undo, so an agent should be able to look before it acts
 - **`insert_lines` and `edit_lines` differ when the target is missing**, deliberately. `insert_lines` appends to the end, since "add this text" still has a sensible landing spot. `edit_lines` errors and leaves the page untouched, since "replace this line" has no fallback — appending would silently produce a page nobody asked for
 - **`patch()` returns `Result<string, PushError>`**, not throw. Must check `result.ok`
 - **Default sort is `updated`**. Aligned across API, display, and user expectations
@@ -76,6 +80,7 @@ See README.md. Key variables:
 - `COSENSE_SID` — Session ID for private projects and write operations
 - `COSENSE_TOOL_SUFFIX` — Tool name suffix for multiple server instances
 - `COSENSE_CONVERT_NUMBERED_LISTS` — Convert numbered lists to bullet lists
+- `COSENSE_ENABLE_DELETE` — Register `delete_page` and the `delete` CLI command (opt-in)
 
 ## CI/CD & Release
 

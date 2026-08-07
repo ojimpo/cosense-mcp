@@ -18,6 +18,7 @@ import {
   ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { listPages, getPage, toReadablePage } from "./cosense.js";
+import { isDeleteEnabled } from "./routes/handlers/delete-page.js";
 import { formatYmd } from './utils/format.js';
 import { setupRoutes } from './routes/index.js';
 
@@ -366,6 +367,30 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ["pageTitle", "targetLineText", "newText"],
         },
       },
+      // delete_page は COSENSE_ENABLE_DELETE=true のときだけ登録する。
+      // 共有のMCP設定に入れて使われることも多いため、有効にした利用者にだけ露出させる
+      ...(isDeleteEnabled() ? [{
+        name: getToolName("delete_page"),
+        description: `Delete a page in Scrapbox project on ${SERVICE_LABEL}. Empties every line of the target page via the WebSocket patch API; Cosense automatically removes a page once all of its lines are empty. There is no undo — pass dryRun to preview what would be removed first. Errors if the page does not exist. Requires COSENSE_SID. Uses ${projectName} project as default if projectName is not specified.`,
+        inputSchema: {
+          type: "object",
+          properties: {
+            pageTitle: {
+              type: "string",
+              description: "Title of the page to delete",
+            },
+            projectName: {
+              type: "string",
+              description: `Target project name. If not specified, defaults to '${projectName}'.`,
+            },
+            dryRun: {
+              type: "boolean",
+              description: "If true, report the number of lines and the first few lines that would be removed without deleting anything. Defaults to false.",
+            },
+          },
+          required: ["pageTitle"],
+        },
+      }] : []),
     ];
   
   

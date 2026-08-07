@@ -15,11 +15,51 @@ MCP server for [Cosense (formerly Scrapbox)](https://cosen.se).
 | `get_page_url` | Generate direct URL for a page | No |
 | `insert_lines` | Insert text after a specified line in a page | Yes |
 | `edit_lines` | Replace an exact-match line (first match, or all with `matchAll`) | Yes |
+| `delete_page` | Delete a page by emptying every line — opt-in, see below | Yes |
 | `get_smart_context` | Get a page and its linked pages (1-hop/2-hop) in AI-optimized format | Yes |
 
 `create_page`, `insert_lines`, and `edit_lines` support a `format` parameter (`"markdown"` or `"scrapbox"`) to control content conversion.
 
 `edit_lines` replaces only the first matching line by default. Set `matchAll: true` to replace every occurrence. The default is deliberately conservative: a line such as a bullet marker or a blank line can repeat many times in a page, and replacing all of them at once is rarely what the caller intended.
+
+### `delete_page` is opt-in
+
+`delete_page` is **not registered unless `COSENSE_ENABLE_DELETE=true` is set**. Without it the tool does not appear in the tool list at all, so an agent cannot call it even by mistake. This server is often added to a shared MCP configuration, so deletion is exposed only to those who deliberately turn it on.
+
+Deleting a page empties every one of its lines, and Cosense removes a page once all of its lines are empty. There is no undo. Two further guards are built in:
+
+- The page must already exist. A missing page returns an error rather than a silent success. (The REST API returns a title line even for a page that was never created, so the check looks at `persistent`, the same way `create_page` does.)
+- `dryRun: true` reports how many lines would be removed and shows the first five of them, without touching the page.
+
+When you run several instances of this server for different projects, set the variable on each instance that should be allowed to delete:
+
+```json
+{
+  "mcpServers": {
+    "cosense-notes": {
+      "command": "npx",
+      "args": ["-y", "scrapbox-cosense-mcp"],
+      "env": {
+        "COSENSE_PROJECT_NAME": "notes",
+        "COSENSE_SID": "s:your-session-id",
+        "COSENSE_TOOL_SUFFIX": "notes",
+        "COSENSE_ENABLE_DELETE": "true"
+      }
+    },
+    "cosense-archive": {
+      "command": "npx",
+      "args": ["-y", "scrapbox-cosense-mcp"],
+      "env": {
+        "COSENSE_PROJECT_NAME": "archive",
+        "COSENSE_SID": "s:your-session-id",
+        "COSENSE_TOOL_SUFFIX": "archive"
+      }
+    }
+  }
+}
+```
+
+Here the `notes` instance exposes `delete_page_notes`, while the `archive` instance exposes no deletion tool at all.
 
 Note that `insert_lines` and `edit_lines` behave differently when the target line is absent. `insert_lines` appends to the end of the page, because "add this text somewhere" still has a reasonable outcome. `edit_lines` returns an error and leaves the page untouched, because "replace this specific line" has no meaningful fallback — appending the replacement would silently produce a page the caller never asked for.
 
@@ -123,6 +163,7 @@ npm install && npm run build
 | `COSENSE_TOOL_SUFFIX` | — | Tool name suffix for multiple instances (e.g. `main` → `get_page_main`) |
 | `COSENSE_CONVERT_NUMBERED_LISTS` | `false` | Convert numbered lists to bullet lists in Markdown conversion |
 | `COSENSE_EXCLUDE_PINNED` | `false` | Exclude pinned pages from initial resource list |
+| `COSENSE_ENABLE_DELETE` | `false` | Register the `delete_page` tool and the `delete` CLI command. Without it, neither is available |
 
 ## CLI Usage
 
@@ -135,6 +176,7 @@ scrapbox-cosense-mcp list --sort=updated --limit=20
 scrapbox-cosense-mcp create "New Page" --body="Markdown content"
 scrapbox-cosense-mcp insert "Page" --after="target line" --text="new text"
 scrapbox-cosense-mcp edit "Page" --target="old line" --text="new text"
+scrapbox-cosense-mcp delete "Page" --dry-run   # needs COSENSE_ENABLE_DELETE=true
 scrapbox-cosense-mcp url "Page Title"
 ```
 

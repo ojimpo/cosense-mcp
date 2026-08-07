@@ -15,10 +15,50 @@
 | `get_page_url` | ページの直接URLを生成 | 不要 |
 | `insert_lines` | ページの指定行の後にテキストを挿入 | 必要 |
 | `edit_lines` | 完全一致した行を置換（既定は最初の1件、`matchAll` で全件） | 必要 |
+| `delete_page` | 全行を空にしてページを削除（オプトイン制。下記参照） | 必要 |
 
 `create_page` と `insert_lines` と `edit_lines` は `format` パラメータ（`"markdown"` または `"scrapbox"`）でコンテンツ変換を制御できます。
 
 `edit_lines` は既定では最初に一致した行だけを置換します。全件を置換するには `matchAll: true` を指定してください。既定値を控えめにしているのは意図的です。箇条書きの記号だけの行や空行のように、同じ文字列の行がページ内に何度も現れることがあり、それらを一度にすべて置き換えるのは呼び出し側の意図と異なる場合が多いためです。
+
+### `delete_page` はオプトイン制です
+
+`delete_page` は、**`COSENSE_ENABLE_DELETE=true` を設定したときだけ登録されます**。設定していなければツール一覧にも現れないので、エージェントが誤って呼ぶこともありません。このサーバーは共有のMCP設定に入れて使われることも多いため、削除機能は意図的に有効化した利用者にだけ露出させています。
+
+ページの削除は、全ての行を空にすることで行います。Cosenseは全ての行が空になったページを自動的に削除します。取り消しはできません。さらに2つの安全策を入れてあります。
+
+- 対象のページが存在していることを確認します。存在しない場合は、黙って成功せずにエラーを返します。CosenseのREST APIは未作成のページに対してもタイトル行を返すため、行数ではなく `persistent` で判定しています。`create_page` の既存ページ判定と同じやり方です。
+- `dryRun: true` を指定すると、削除される行数と冒頭5行を報告するだけで、ページには一切触れません。
+
+プロジェクトごとに複数のインスタンスを動かしている場合は、削除を許すインスタンスにだけこの変数を設定してください。
+
+```json
+{
+  "mcpServers": {
+    "cosense-notes": {
+      "command": "npx",
+      "args": ["-y", "scrapbox-cosense-mcp"],
+      "env": {
+        "COSENSE_PROJECT_NAME": "notes",
+        "COSENSE_SID": "s:your-session-id",
+        "COSENSE_TOOL_SUFFIX": "notes",
+        "COSENSE_ENABLE_DELETE": "true"
+      }
+    },
+    "cosense-archive": {
+      "command": "npx",
+      "args": ["-y", "scrapbox-cosense-mcp"],
+      "env": {
+        "COSENSE_PROJECT_NAME": "archive",
+        "COSENSE_SID": "s:your-session-id",
+        "COSENSE_TOOL_SUFFIX": "archive"
+      }
+    }
+  }
+}
+```
+
+この例では `notes` のインスタンスだけが `delete_page_notes` を持ち、`archive` のインスタンスには削除のツールが現れません。
 
 `insert_lines` と `edit_lines` は、対象の行が見つからなかったときの挙動が異なります。`insert_lines` はページの末尾に追記します。「このテキストをどこかに足す」という要求には、末尾という妥当な着地点があるからです。`edit_lines` はエラーを返し、ページを変更しません。「この特定の行を置き換える」という要求には代わりの着地点がなく、置換内容を末尾に追記してしまえば、呼び出し側が求めていないページが黙って出来上がるためです。
 
@@ -122,6 +162,7 @@ npm install && npm run build
 | `COSENSE_TOOL_SUFFIX` | — | 複数インスタンス用のツール名サフィックス（例: `main` → `get_page_main`） |
 | `COSENSE_CONVERT_NUMBERED_LISTS` | `false` | Markdown変換時に数字付きリストを箇条書きに変換 |
 | `COSENSE_EXCLUDE_PINNED` | `false` | 初期リソース一覧からピン留めページを除外 |
+| `COSENSE_ENABLE_DELETE` | `false` | `delete_page` ツールと `delete` サブコマンドを有効にする。設定しなければどちらも使えない |
 
 ## 複数プロジェクト対応
 
