@@ -1,53 +1,44 @@
 import { patch } from '@cosense/std/websocket';
 import type { BaseLine } from '@cosense/types/rest';
-import { convertMarkdownToScrapbox } from '../../utils/markdown-converter.js';
 import { formatError, stringifyError } from '../../utils/format.js';
 
-export interface EditLinesParams {
+export interface DeleteLinesParams {
   pageTitle: string;
   targetLineText: string;
-  newText: string;
   projectName?: string | undefined;
-  format?: "markdown" | "scrapbox" | undefined;
   matchAll?: boolean | undefined;
   compact?: boolean | undefined;
 }
 
-export async function handleEditLines(
+export async function handleDeleteLines(
   defaultProjectName: string,
   cosenseSid: string | undefined,
-  params: EditLinesParams
+  params: DeleteLinesParams
 ) {
   const projectName = params.projectName || defaultProjectName;
 
   try {
     if (!cosenseSid) {
       return formatError('Authentication required: COSENSE_SID is needed for editing pages', {
-        Operation: 'edit_lines',
+        Operation: 'delete_lines',
         Project: projectName,
         Page: params.pageTitle,
         Timestamp: new Date().toISOString(),
       }, params.compact);
     }
 
-    const convertNumberedLists = process.env.COSENSE_CONVERT_NUMBERED_LISTS === 'true';
-
-    let convertedText: string;
-    if (params.format === 'scrapbox') {
-      convertedText = params.newText;
-    } else {
-      convertedText = await convertMarkdownToScrapbox(params.newText, { convertNumberedLists });
-    }
-
-    const replacementLines = convertedText.split('\n').map(text => ({ text }));
     // 改行を含む targetLineText は連続する行ブロックの完全一致として扱う。
-    // 改行を含まない場合は従来どおり単一行の完全一致（targetLines の長さが 1）になる。
     const targetLines = params.targetLineText.split('\n');
-    let replacedCount = 0;
+    let deletedMatchCount = 0;
+    let deletedLineCount = 0;
+    let wouldDeleteTitle = false;
 
     const result = await patch(projectName, params.pageTitle, (lines: BaseLine[]) => {
-      // patchがコンフリクトでリトライした場合に前回の結果が残らないようリセットする
-      replacedCount = 0;
+      // patch がコンフリクトでリトライした場合に前回の結果が残らないようリセットする
+      deletedMatchCount = 0;
+      deletedLineCount = 0;
+      wouldDeleteTitle = false;
+
       // ブロックの開始行インデックスを前から走査・非重複で収集する。
       const matchedStarts: number[] = [];
       let i = 0;
@@ -73,18 +64,31 @@ export async function handleEditLines(
         return lines;
       }
 
-      // Replace matches from the back so indices on the left stay valid.
-      let next = lines.slice() as Array<BaseLine | { text: string }>;
-      for (let k = matchedStarts.length - 1; k >= 0; k--) {
-        const idx = matchedStarts[k]!;
-        next = [
-          ...next.slice(0, idx),
-          ...replacementLines,
-          ...next.slice(idx + targetLines.length),
-        ];
+      const indicesToDelete = new Set<number>();
+      for (const start of matchedStarts) {
+        for (let j = 0; j < targetLines.length; j++) {
+          indicesToDelete.add(start + j);
+        }
       }
-      replacedCount = matchedStarts.length;
-      return next as BaseLine[];
+
+      // 先頭行はタイトル。削除するとページのリネーム（または全行削除による消滅）になるため拒否する。
+      // delete_lines はオプトイン制でないので、ここが delete_page への抜け穴になってはならない。
+      if (indicesToDelete.has(0)) {
+        wouldDeleteTitle = true;
+        return lines;
+      }
+
+      const next = lines.filter((_, idx) => !indicesToDelete.has(idx));
+
+      // 念のため: 全行が消える削除も拒否する（Cosense がページを自動削除するため）。
+      if (next.length === 0) {
+        wouldDeleteTitle = true;
+        return lines;
+      }
+
+      deletedMatchCount = matchedStarts.length;
+      deletedLineCount = indicesToDelete.size;
+      return next;
     }, {
       sid: cosenseSid,
     });
@@ -93,9 +97,23 @@ export async function handleEditLines(
       throw new Error(`WebSocket patch failed: ${stringifyError(result.err)}`);
     }
 
-    if (replacedCount === 0) {
+    if (wouldDeleteTitle) {
+      return formatError(
+        'Refusing to delete the title line: this would rename or remove the page itself. Use delete_page (requires COSENSE_ENABLE_DELETE=true) to remove a page.',
+        {
+          Operation: 'delete_lines',
+          Project: projectName,
+          Page: params.pageTitle,
+          'Target line': `"${params.targetLineText}"`,
+          Timestamp: new Date().toISOString(),
+        },
+        params.compact
+      );
+    }
+
+    if (deletedMatchCount === 0) {
       return formatError(`Target line not found: "${params.targetLineText}"`, {
-        Operation: 'edit_lines',
+        Operation: 'delete_lines',
         Project: projectName,
         Page: params.pageTitle,
         Timestamp: new Date().toISOString(),
@@ -106,7 +124,7 @@ export async function handleEditLines(
       return {
         content: [{
           type: "text",
-          text: `edited: ${replacedCount} line(s) in ${params.pageTitle}`
+          text: `deleted: ${deletedLineCount} line(s) in ${params.pageTitle}`
         }]
       };
     }
@@ -115,13 +133,13 @@ export async function handleEditLines(
       content: [{
         type: "text",
         text: [
-          'Successfully edited line(s)',
-          `Operation: edit_lines`,
+          'Successfully deleted line(s)',
+          `Operation: delete_lines`,
           `Project: ${projectName}`,
           `Page: ${params.pageTitle}`,
-          `Target line: "${params.targetLineText}"`,
-          `Matches replaced: ${replacedCount}`,
-          `Replacement lines: ${replacementLines.length}`,
+          `Target: "${params.targetLineText}"`,
+          `Matches removed: ${deletedMatchCount}`,
+          `Lines removed: ${deletedLineCount}`,
           `Timestamp: ${new Date().toISOString()}`
         ].join('\n')
       }]
@@ -131,7 +149,7 @@ export async function handleEditLines(
     return formatError(
       error instanceof Error ? error.message : 'Unknown error',
       {
-        Operation: 'edit_lines',
+        Operation: 'delete_lines',
         Project: projectName,
         Page: params.pageTitle,
         'Target line': `"${params.targetLineText}"`,

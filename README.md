@@ -14,22 +14,36 @@ MCP server for [Cosense (formerly Scrapbox)](https://cosen.se).
 | `create_page` | Create a page via WebSocket API with Markdown/Scrapbox body | Yes |
 | `get_page_url` | Generate direct URL for a page | No |
 | `insert_lines` | Insert text after a specified line in a page | Yes |
-| `edit_lines` | Replace an exact-match line (first match, or all with `matchAll`) | Yes |
+| `edit_lines` | Replace exact-match line(s), including a multi-line block (first match, or all with `matchAll`) | Yes |
+| `delete_lines` | Delete exact-match line(s), including a multi-line block (first match, or all with `matchAll`) | Yes |
 | `delete_page` | Delete a page by emptying every line — opt-in, see below | Yes |
+| `rewrite_page` | Replace a page's entire content — opt-in, see below | Yes |
 | `get_smart_context` | Get a page and its linked pages (1-hop/2-hop) in AI-optimized format | Yes |
 
-`create_page`, `insert_lines`, and `edit_lines` support a `format` parameter (`"markdown"` or `"scrapbox"`) to control content conversion.
+`create_page`, `insert_lines`, `edit_lines`, and `rewrite_page` support a `format` parameter (`"markdown"` or `"scrapbox"`) to control content conversion.
 
 `edit_lines` replaces only the first matching line by default. Set `matchAll: true` to replace every occurrence. The default is deliberately conservative: a line such as a bullet marker or a blank line can repeat many times in a page, and replacing all of them at once is rarely what the caller intended.
 
-### `delete_page` is opt-in
+`targetLineText` may contain newlines to match a contiguous block of lines. The block is replaced as a whole, so n lines can become m lines (for example, collapsing several lines into one). Block matches with `matchAll: true` are non-overlapping.
 
-`delete_page` is **not registered unless `COSENSE_ENABLE_DELETE=true` is set**. Without it the tool does not appear in the tool list at all, so an agent cannot call it even by mistake. This server is often added to a shared MCP configuration, so deletion is exposed only to those who deliberately turn it on.
+`delete_lines` uses the same exact-match (and block) semantics but removes the matched lines instead of replacing them. It refuses to delete the title line (the first line), because that would rename or remove the page itself — use `delete_page` for that.
 
-Deleting a page empties every one of its lines, and Cosense removes a page once all of its lines are empty. There is no undo. Two further guards are built in:
+### `delete_page` and `rewrite_page` are opt-in
+
+`delete_page` and `rewrite_page` are **not registered unless `COSENSE_ENABLE_DELETE=true` is set**. Without it neither tool appears in the tool list at all, so an agent cannot call them even by mistake. This server is often added to a shared MCP configuration, so whole-page destruction is exposed only to those who deliberately turn it on.
+
+The reasoning: `insert_lines`, `edit_lines`, and `delete_lines` all require an exact match, which is only possible if the caller has actually read the page — they can only destroy lines they already know. `delete_page` and `rewrite_page` act on the entire page regardless of whether the caller has read it, so they get a separate opt-in gate.
+
+`delete_page` empties every one of a page's lines, and Cosense removes a page once all of its lines are empty. There is no undo. Two further guards are built in:
 
 - The page must already exist. A missing page returns an error rather than a silent success. (The REST API returns a title line even for a page that was never created, so the check looks at `persistent`, the same way `create_page` does.)
 - `dryRun: true` reports how many lines would be removed and shows the first five of them, without touching the page.
+
+`rewrite_page` replaces a page's entire content (the title is preserved as the first line). It has the same guards, plus two of its own:
+
+- The page must already exist — the `persistent` check is inverted relative to `create_page`, so a typo cannot silently create a new page.
+- Empty content is rejected — removing a page is `delete_page`'s job.
+- `dryRun: true` reports the before/after line counts and previews without touching the page.
 
 When you run several instances of this server for different projects, set the variable on each instance that should be allowed to delete:
 
@@ -163,7 +177,7 @@ npm install && npm run build
 | `COSENSE_TOOL_SUFFIX` | — | Tool name suffix for multiple instances (e.g. `main` → `get_page_main`) |
 | `COSENSE_CONVERT_NUMBERED_LISTS` | `false` | Convert numbered lists to bullet lists in Markdown conversion |
 | `COSENSE_EXCLUDE_PINNED` | `false` | Exclude pinned pages from initial resource list |
-| `COSENSE_ENABLE_DELETE` | `false` | Register the `delete_page` tool and the `delete` CLI command. Without it, neither is available |
+| `COSENSE_ENABLE_DELETE` | `false` | Register the `delete_page` and `rewrite_page` tools (and the `delete` / `rewrite` CLI commands). Without it, none are available |
 
 ## CLI Usage
 
@@ -176,7 +190,9 @@ scrapbox-cosense-mcp list --sort=updated --limit=20
 scrapbox-cosense-mcp create "New Page" --body="Markdown content"
 scrapbox-cosense-mcp insert "Page" --after="target line" --text="new text"
 scrapbox-cosense-mcp edit "Page" --target="old line" --text="new text"
+scrapbox-cosense-mcp delete-lines "Page" --target="old line"
 scrapbox-cosense-mcp delete "Page" --dry-run   # needs COSENSE_ENABLE_DELETE=true
+scrapbox-cosense-mcp rewrite "Page" --body="new content" --dry-run   # needs COSENSE_ENABLE_DELETE=true
 scrapbox-cosense-mcp url "Page Title"
 ```
 

@@ -8,6 +8,8 @@ import { handleGetPageUrl } from './handlers/get-page-url.js';
 import { handleInsertLines } from './handlers/insert-lines.js';
 import { handleGetSmartContext } from './handlers/get-smart-context.js';
 import { handleEditLines } from './handlers/edit-lines.js';
+import { handleDeleteLines } from './handlers/delete-lines.js';
+import { handleRewritePage } from './handlers/rewrite-page.js';
 import { handleDeletePage } from './handlers/delete-page.js';
 
 // ツール名正規化ヘルパー
@@ -109,6 +111,33 @@ export function setupRoutes(
             projectName: request.params.arguments?.projectName as string | undefined,
             format: (request.params.arguments?.format as "markdown" | "scrapbox" | undefined) ?? undefined,
             matchAll: request.params.arguments?.matchAll as boolean | undefined,
+            compact: request.params.arguments?.compact as boolean | undefined,
+          }
+        );
+
+      case "delete_lines":
+        return handleDeleteLines(
+          projectName,
+          cosenseSid,
+          {
+            pageTitle: String(request.params.arguments?.pageTitle),
+            targetLineText: String(request.params.arguments?.targetLineText),
+            projectName: request.params.arguments?.projectName as string | undefined,
+            matchAll: request.params.arguments?.matchAll as boolean | undefined,
+            compact: request.params.arguments?.compact as boolean | undefined,
+          }
+        );
+
+      case "rewrite_page":
+        return handleRewritePage(
+          projectName,
+          cosenseSid,
+          {
+            pageTitle: String(request.params.arguments?.pageTitle),
+            body: typeof request.params.arguments?.body === 'string' ? request.params.arguments.body : '',
+            projectName: request.params.arguments?.projectName as string | undefined,
+            format: (request.params.arguments?.format as "markdown" | "scrapbox" | undefined) ?? undefined,
+            dryRun: request.params.arguments?.dryRun as boolean | undefined,
             compact: request.params.arguments?.compact as boolean | undefined,
           }
         );

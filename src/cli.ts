@@ -7,9 +7,11 @@ import { handleGetPageUrl } from './routes/handlers/get-page-url.js';
 import { handleInsertLines } from './routes/handlers/insert-lines.js';
 import { handleEditLines } from './routes/handlers/edit-lines.js';
 import { handleDeletePage } from './routes/handlers/delete-page.js';
+import { handleDeleteLines } from './routes/handlers/delete-lines.js';
+import { handleRewritePage } from './routes/handlers/rewrite-page.js';
 import { handleGetSmartContext } from './routes/handlers/get-smart-context.js';
 
-const CLI_COMMANDS = ['get', 'list', 'search', 'create', 'url', 'insert', 'edit', 'delete', 'context'] as const;
+const CLI_COMMANDS = ['get', 'list', 'search', 'create', 'url', 'insert', 'edit', 'delete', 'delete-lines', 'rewrite', 'context'] as const;
 type CliCommand = typeof CLI_COMMANDS[number];
 
 interface ParsedArgs {
@@ -175,6 +177,38 @@ Options:
   --dry-run                      Report what would be removed without deleting
 
 ${COMMON_OPTIONS}`,
+
+  'delete-lines': `Usage: scrapbox-cosense-mcp delete-lines <title> --target=TEXT [options]
+
+Delete a line (or a contiguous block) matched by exact text. Requires COSENSE_SID.
+If no line matches, the command fails without modifying the page.
+Refuses to delete the title line (the first line), which would rename or remove the page.
+
+Arguments:
+  <title>                        Page title (required)
+
+Options:
+  --target=TEXT                  Exact text of the line(s) to delete (required)
+  --all                          Delete every matching block (default: first only)
+
+${COMMON_OPTIONS}`,
+
+  rewrite: `Usage: scrapbox-cosense-mcp rewrite <title> --body=TEXT [options]
+
+Replace the entire content of an existing page. Requires COSENSE_SID and
+COSENSE_ENABLE_DELETE=true. The title is preserved as the first line.
+Fails if the page does not exist.
+
+Arguments:
+  <title>                        Page title (required)
+
+Options:
+  --body=TEXT                    New page content
+  --body-file=PATH               Read new content from file
+  --format=FORMAT                Content format: markdown (default) | scrapbox
+  --dry-run                      Report before/after without changing anything
+
+${COMMON_OPTIONS}`,
 };
 
 function printHelp(command?: string): void {
@@ -197,7 +231,9 @@ Commands:
   url <title>                    Get page URL
   insert <title>                 Insert lines into a page
   edit <title>                   Replace an exact-match line in a page
+  delete-lines <title>           Delete exact-match line(s) from a page
   delete <title>                 Delete a page (requires COSENSE_ENABLE_DELETE)
+  rewrite <title>                Replace an entire page (requires COSENSE_ENABLE_DELETE)
   context <title>                Get smart context (related pages)
 
 ${COMMON_OPTIONS}
@@ -208,7 +244,7 @@ Environment Variables:
   COSENSE_PROJECT_NAME           Target project (required for most commands)
   COSENSE_SID                    Session ID for private projects
   COSENSE_CONVERT_NUMBERED_LISTS Convert numbered lists to bullet lists
-  COSENSE_ENABLE_DELETE          Set to true to enable the delete command
+  COSENSE_ENABLE_DELETE          Set to true to enable delete/rewrite commands
 `;
   process.stdout.write(help);
 }
@@ -452,6 +488,56 @@ export async function runCli(argv: string[]): Promise<void> {
       const project = requireProjectName(flags);
       result = await handleDeletePage(project, sid, {
         pageTitle,
+        dryRun: flags['dry-run'] === true,
+        projectName: typeof flags['project'] === 'string' ? flags['project'] : undefined,
+        compact,
+      });
+      break;
+    }
+
+    case 'delete-lines': {
+      const pageTitle = positional[0];
+      if (!pageTitle) {
+        process.stderr.write('Error: Page title is required. Usage: scrapbox-cosense-mcp delete-lines <title> --target=TEXT\n');
+        process.exit(2);
+      }
+      const targetText = typeof flags['target'] === 'string' ? unescapeString(flags['target']) : undefined;
+      if (!targetText) {
+        process.stderr.write('Error: --target=TEXT is required. Usage: scrapbox-cosense-mcp delete-lines <title> --target=TEXT\n');
+        process.exit(2);
+      }
+      const project = requireProjectName(flags);
+      result = await handleDeleteLines(project, sid, {
+        pageTitle,
+        targetLineText: targetText,
+        matchAll: flags['all'] === true,
+        projectName: typeof flags['project'] === 'string' ? flags['project'] : undefined,
+        compact,
+      });
+      break;
+    }
+
+    case 'rewrite': {
+      const pageTitle = positional[0];
+      if (!pageTitle) {
+        process.stderr.write('Error: Page title is required. Usage: scrapbox-cosense-mcp rewrite <title> --body=TEXT\n');
+        process.exit(2);
+      }
+      let body: string | undefined;
+      if (typeof flags['body-file'] === 'string') {
+        body = readFileContent(flags['body-file']);
+      } else if (typeof flags['body'] === 'string') {
+        body = unescapeString(flags['body']);
+      }
+      if (!body) {
+        process.stderr.write('Error: --body=TEXT or --body-file=PATH is required.\n');
+        process.exit(2);
+      }
+      const project = requireProjectName(flags);
+      result = await handleRewritePage(project, sid, {
+        pageTitle,
+        body,
+        format: flags['format'] === 'scrapbox' ? 'scrapbox' : undefined,
         dryRun: flags['dry-run'] === true,
         projectName: typeof flags['project'] === 'string' ? flags['project'] : undefined,
         compact,

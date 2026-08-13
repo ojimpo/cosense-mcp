@@ -195,6 +195,127 @@ describe('handleEditLines', () => {
       expect(result.content?.[0]?.text).toContain('Target line not found');
     });
 
+    it('複数行ブロックを1行に置換できる (n行 → 1行)', async () => {
+      let captured: any[] = [];
+      mockedPatch.mockImplementation(async (_project, _title, updateFn) => {
+        captured = updateFn([
+          { text: 'Test Page', id: 'l1' },
+          { text: 'old1', id: 'l2' },
+          { text: 'old2', id: 'l3' },
+          { text: 'keep', id: 'l4' },
+        ] as any);
+        return { ok: true, val: 'commitId', err: null };
+      });
+
+      const result = await handleEditLines(mockProjectName, mockCosenseSid, {
+        pageTitle: 'Test Page',
+        targetLineText: 'old1\nold2',
+        newText: 'new',
+        format: 'scrapbox',
+      });
+
+      expect(captured.map(l => l.text)).toEqual(['Test Page', 'new', 'keep']);
+      expect(result.content?.[0]?.text).toContain('Matches replaced: 1');
+    });
+
+    it('複数行ブロックを複数行に置換できる (n行 → m行)', async () => {
+      let captured: any[] = [];
+      mockedPatch.mockImplementation(async (_project, _title, updateFn) => {
+        captured = updateFn([
+          { text: 'Test Page', id: 'l1' },
+          { text: 'old1', id: 'l2' },
+          { text: 'old2', id: 'l3' },
+          { text: 'keep', id: 'l4' },
+        ] as any);
+        return { ok: true, val: 'commitId', err: null };
+      });
+
+      await handleEditLines(mockProjectName, mockCosenseSid, {
+        pageTitle: 'Test Page',
+        targetLineText: 'old1\nold2',
+        newText: 'new1\nnew2\nnew3',
+        format: 'scrapbox',
+      });
+
+      expect(captured.map(l => l.text)).toEqual([
+        'Test Page',
+        'new1',
+        'new2',
+        'new3',
+        'keep',
+      ]);
+    });
+
+    it('ブロックが完全一致しない場合はエラーになる', async () => {
+      mockedPatch.mockImplementation(async (_project, _title, updateFn) => {
+        updateFn([
+          { text: 'Test Page', id: 'l1' },
+          { text: 'a', id: 'l2' },
+          { text: 'b', id: 'l3' },
+        ] as any);
+        return { ok: true, val: 'commitId', err: null };
+      });
+
+      const result = await handleEditLines(mockProjectName, mockCosenseSid, {
+        pageTitle: 'Test Page',
+        targetLineText: 'a\nx',
+        newText: 'new',
+        format: 'scrapbox',
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content?.[0]?.text).toContain('Target line not found');
+    });
+
+    it('matchAll=true のブロック一致は非重複で全件置換する', async () => {
+      let captured: any[] = [];
+      mockedPatch.mockImplementation(async (_project, _title, updateFn) => {
+        captured = updateFn([
+          { text: 'Test Page', id: 'l1' },
+          { text: 'a', id: 'l2' },
+          { text: 'a', id: 'l3' },
+          { text: 'a', id: 'l4' },
+          { text: 'a', id: 'l5' },
+        ] as any);
+        return { ok: true, val: 'commitId', err: null };
+      });
+
+      const result = await handleEditLines(mockProjectName, mockCosenseSid, {
+        pageTitle: 'Test Page',
+        targetLineText: 'a\na',
+        newText: 'x',
+        format: 'scrapbox',
+        matchAll: true,
+      });
+
+      expect(captured.map(l => l.text)).toEqual(['Test Page', 'x', 'x']);
+      expect(result.content?.[0]?.text).toContain('Matches replaced: 2');
+    });
+
+    it('matchAll=true でも重複ブロックは1回として扱わない (非重複)', async () => {
+      let captured: any[] = [];
+      mockedPatch.mockImplementation(async (_project, _title, updateFn) => {
+        captured = updateFn([
+          { text: 'a', id: 'l1' },
+          { text: 'a', id: 'l2' },
+          { text: 'a', id: 'l3' },
+        ] as any);
+        return { ok: true, val: 'commitId', err: null };
+      });
+
+      const result = await handleEditLines(mockProjectName, mockCosenseSid, {
+        pageTitle: 'Test Page',
+        targetLineText: 'a\na',
+        newText: 'x',
+        format: 'scrapbox',
+        matchAll: true,
+      });
+
+      // 3連続の 'a' に対し 'a\na' は index 0 で1回だけマッチし、後続探索は index 2 から再開されるため残る 'a' は単独で残る
+      expect(captured.map(l => l.text)).toEqual(['x', 'a']);
+      expect(result.content?.[0]?.text).toContain('Matches replaced: 1');
+    });
+
     it('markdown 変換が呼ばれる (format 未指定時)', async () => {
       const { convertMarkdownToScrapbox } = await import('@/utils/markdown-converter.js');
       const mockedConvert = convertMarkdownToScrapbox as jest.MockedFunction<typeof convertMarkdownToScrapbox>;
