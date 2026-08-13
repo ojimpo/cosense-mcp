@@ -334,7 +334,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: getToolName("edit_lines"),
-        description: `Replace one or more lines in a Scrapbox page on ${SERVICE_LABEL}. Matches the target line by exact text and substitutes it with new content (which may span multiple lines). By default only the first match is replaced; set matchAll to replace every occurrence. Returns an error if no match is found. Requires COSENSE_SID. Uses ${projectName} project as default if projectName is not specified.`,
+        description: `Replace one or more lines in a Scrapbox page on ${SERVICE_LABEL}. Matches the target by exact text and substitutes it with new content (which may span multiple lines). If targetLineText contains newline characters, it is matched as a contiguous block of lines, so any n lines can be replaced with m lines. By default only the first match is replaced; set matchAll to replace every (non-overlapping) occurrence. Returns an error if no match is found. Requires COSENSE_SID. Uses ${projectName} project as default if projectName is not specified.`,
         inputSchema: {
           type: "object",
           properties: {
@@ -344,7 +344,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             targetLineText: {
               type: "string",
-              description: "Exact text of the line to replace. Matching is case-sensitive and requires a full-line exact match.",
+              description: "Exact text of the line(s) to replace. Matching is case-sensitive and requires full-line exact matches. If it contains newline characters, the consecutive lines are matched as a contiguous block and replaced as a whole.",
             },
             newText: {
               type: "string",
@@ -361,7 +361,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             matchAll: {
               type: "boolean",
-              description: "If true, replace every line matching targetLineText. Defaults to false (replace only the first match).",
+              description: "If true, replace every occurrence of the target (a single line or a contiguous block). Block matches are non-overlapping. Defaults to false (replace only the first match).",
             },
           },
           required: ["pageTitle", "targetLineText", "newText"],

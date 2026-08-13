@@ -40,34 +40,50 @@ export async function handleEditLines(
     }
 
     const replacementLines = convertedText.split('\n').map(text => ({ text }));
+    // 改行を含む targetLineText は連続する行ブロックの完全一致として扱う。
+    // 改行を含まない場合は従来どおり単一行の完全一致（targetLines の長さが 1）になる。
+    const targetLines = params.targetLineText.split('\n');
     let replacedCount = 0;
 
     const result = await patch(projectName, params.pageTitle, (lines: BaseLine[]) => {
       // patchがコンフリクトでリトライした場合に前回の結果が残らないようリセットする
       replacedCount = 0;
-      const matchedIndices: number[] = [];
-      for (let i = 0; i < lines.length; i++) {
-        if (lines[i]?.text === params.targetLineText) {
-          matchedIndices.push(i);
+      // ブロックの開始行インデックスを前から走査・非重複で収集する。
+      const matchedStarts: number[] = [];
+      let i = 0;
+      while (i + targetLines.length <= lines.length) {
+        let matched = true;
+        for (let j = 0; j < targetLines.length; j++) {
+          if (lines[i + j]?.text !== targetLines[j]) {
+            matched = false;
+            break;
+          }
+        }
+        if (matched) {
+          matchedStarts.push(i);
           if (!params.matchAll) break;
+          // 非重複: マッチしたブロックの直後の行から次の探索を再開する。
+          i += targetLines.length;
+        } else {
+          i++;
         }
       }
 
-      if (matchedIndices.length === 0) {
+      if (matchedStarts.length === 0) {
         return lines;
       }
 
       // Replace matches from the back so indices on the left stay valid.
       let next = lines.slice() as Array<BaseLine | { text: string }>;
-      for (let i = matchedIndices.length - 1; i >= 0; i--) {
-        const idx = matchedIndices[i]!;
+      for (let k = matchedStarts.length - 1; k >= 0; k--) {
+        const idx = matchedStarts[k]!;
         next = [
           ...next.slice(0, idx),
           ...replacementLines,
-          ...next.slice(idx + 1),
+          ...next.slice(idx + targetLines.length),
         ];
       }
-      replacedCount = matchedIndices.length;
+      replacedCount = matchedStarts.length;
       return next as BaseLine[];
     }, {
       sid: cosenseSid,
