@@ -47,8 +47,10 @@ export async function handleRewritePage(
       );
     }
 
-    // 空内容は削除の意図と区別するため拒否する（削除は delete_page の仕事）
-    const body = params.body ?? '';
+    // 空内容は削除の意図と区別するため拒否する（削除は delete_page の仕事）。
+    // typeof で判定するのは、スキーマを無視して非文字列（数値など）が渡された場合に
+    // .trim() で TypeError になるのを防ぎ、同じエラーに合流させるため
+    const body = typeof params.body === 'string' ? params.body : '';
     if (body.trim() === '') {
       return formatError(
         'Empty content is not allowed. Use delete_page to remove a page.',

@@ -93,6 +93,18 @@ describe('handleRewritePage', () => {
       expect(mockedPatch).not.toHaveBeenCalled();
     });
 
+    test('bodyが文字列でない場合も空内容と同じエラーになること', async () => {
+      // MCP スキーマは string を要求するが、スキーマ検証をしないクライアントに備える
+      const result = await handleRewritePage(mockProjectName, mockCosenseSid, {
+        pageTitle: 'Test Page',
+        body: 42 as unknown as string,
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content?.[0]?.text).toContain('Empty content');
+      expect(mockedPatch).not.toHaveBeenCalled();
+    });
+
     test('bodyが空白のみの場合もエラーになること', async () => {
       const result = await handleRewritePage(mockProjectName, mockCosenseSid, {
         pageTitle: 'Test Page',
