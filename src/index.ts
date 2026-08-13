@@ -367,8 +367,34 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ["pageTitle", "targetLineText", "newText"],
         },
       },
-      // delete_page は COSENSE_ENABLE_DELETE=true のときだけ登録する。
-      // 共有のMCP設定に入れて使われることも多いため、有効にした利用者にだけ露出させる
+      {
+        name: getToolName("delete_lines"),
+        description: `Delete one or more lines from a Scrapbox page on ${SERVICE_LABEL}. Matches the target by exact text. If targetLineText contains newline characters, it is matched as a contiguous block of lines and removed as a whole. By default only the first match is removed; set matchAll to remove every (non-overlapping) occurrence. Refuses to delete the title line (the first line), which would rename or remove the page — use delete_page for that. Returns an error if no match is found. Requires COSENSE_SID. Uses ${projectName} project as default if projectName is not specified.`,
+        inputSchema: {
+          type: "object",
+          properties: {
+            pageTitle: {
+              type: "string",
+              description: "Title of the page to modify",
+            },
+            targetLineText: {
+              type: "string",
+              description: "Exact text of the line(s) to delete. Matching is case-sensitive and requires full-line exact matches. If it contains newline characters, the consecutive lines are matched as a contiguous block and removed as a whole.",
+            },
+            projectName: {
+              type: "string",
+              description: `Target project name. If not specified, defaults to '${projectName}'.`,
+            },
+            matchAll: {
+              type: "boolean",
+              description: "If true, delete every occurrence of the target (a single line or a contiguous block). Block matches are non-overlapping. The operation is atomic: if any match includes the title line, the whole call is refused. Defaults to false (delete only the first match).",
+            },
+          },
+          required: ["pageTitle", "targetLineText"],
+        },
+      },
+      // delete_page / rewrite_page は COSENSE_ENABLE_DELETE=true のときだけ登録する。
+      // ページ全体を破壊しうる操作なので、共有のMCP設定では有効にした利用者にだけ露出させる
       ...(isDeleteEnabled() ? [{
         name: getToolName("delete_page"),
         description: `Delete a page in Scrapbox project on ${SERVICE_LABEL}. Empties every line of the target page via the WebSocket patch API; Cosense automatically removes a page once all of its lines are empty. There is no undo — pass dryRun to preview what would be removed first. Errors if the page does not exist. Requires COSENSE_SID. Uses ${projectName} project as default if projectName is not specified.`,
@@ -389,6 +415,36 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
           },
           required: ["pageTitle"],
+        },
+      }, {
+        name: getToolName("rewrite_page"),
+        description: `Replace the entire content of a Scrapbox page on ${SERVICE_LABEL} with new content (the page title is preserved as the first line). This is a destructive, whole-page operation. Errors if the page does not exist, and rejects empty content (use delete_page to remove a page). Pass dryRun to preview before/after without changing anything. Requires COSENSE_SID and COSENSE_ENABLE_DELETE=true. Uses ${projectName} project as default if projectName is not specified.`,
+        inputSchema: {
+          type: "object",
+          properties: {
+            pageTitle: {
+              type: "string",
+              description: "Title of the page to rewrite",
+            },
+            body: {
+              type: "string",
+              description: "New page content in markdown format (default) or Scrapbox syntax (when format is 'scrapbox'). Do not repeat the title — it is preserved as the first line. Must not be empty.",
+            },
+            projectName: {
+              type: "string",
+              description: `Target project name. If not specified, defaults to '${projectName}'.`,
+            },
+            format: {
+              type: "string",
+              enum: ["markdown", "scrapbox"],
+              description: "Content format of body. 'markdown' (default) converts Markdown to Scrapbox syntax. 'scrapbox' passes content through as-is, preserving Scrapbox-native indentation and syntax.",
+            },
+            dryRun: {
+              type: "boolean",
+              description: "If true, report the current and new line counts and previews without changing anything. Defaults to false.",
+            },
+          },
+          required: ["pageTitle", "body"],
         },
       }] : []),
     ];

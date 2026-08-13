@@ -1,13 +1,13 @@
 ---
 name: cosense
-description: Interact with Cosense (Scrapbox) pages - read, search, list, create, and edit pages. Use when the user mentions Cosense, Scrapbox, or wants to work with wiki pages.
+description: Interact with Cosense (Scrapbox) pages - read, search, list, create, edit, delete, and rewrite pages. Use when the user mentions Cosense, Scrapbox, or wants to work with wiki pages.
 allowed-tools: Bash(npx -y scrapbox-cosense-mcp *), Bash(scrapbox-cosense-mcp *)
 argument-hint: <operation or natural language request>
 ---
 
 # Cosense (Scrapbox)
 
-Cosense ページの取得・検索・作成・編集。CLI 経由で実行。
+Cosense ページの取得・検索・作成・編集・削除・書き換え。CLI 経由で実行。
 
 ## コマンド
 
@@ -18,8 +18,10 @@ Cosense ページの取得・検索・作成・編集。CLI 経由で実行。
 - `npx -y scrapbox-cosense-mcp list [--sort=X --limit=N]` — ページ一覧
 - `npx -y scrapbox-cosense-mcp create <title> [--body=TEXT]` — ページ作成（markdown自動変換）
 - `npx -y scrapbox-cosense-mcp insert <title> --after=TEXT --text=TEXT` — 行挿入
-- `npx -y scrapbox-cosense-mcp edit <title> --target=TEXT --text=TEXT [--all]` — 行置換（完全一致、既定は最初の1件のみ）
+- `npx -y scrapbox-cosense-mcp edit <title> --target=TEXT --text=TEXT [--all]` — 行置換（完全一致、複数行ブロック対応、既定は最初の1件のみ）
+- `npx -y scrapbox-cosense-mcp delete-lines <title> --target=TEXT [--all]` — 行削除（完全一致、複数行ブロック対応）
 - `npx -y scrapbox-cosense-mcp delete <title> [--dry-run]` — ページ削除（`COSENSE_ENABLE_DELETE=true` が必要。取り消せないので、まず `--dry-run` で確認する）
+- `npx -y scrapbox-cosense-mcp rewrite <title> --body=TEXT [--dry-run]` — ページ全体の書き換え（`COSENSE_ENABLE_DELETE=true` が必要。取り消せないので、まず `--dry-run` で確認する）
 - `npx -y scrapbox-cosense-mcp url <title>` — URL生成
 - `npx -y scrapbox-cosense-mcp context <title> [--hop=1|2]` — 関連ページ一括取得（Smart Context）
 
@@ -34,8 +36,8 @@ Cosense ページの取得・検索・作成・編集。CLI 経由で実行。
 | 変数名 | 説明 | 必須 |
 |---|---|---|
 | `COSENSE_PROJECT_NAME` | 対象プロジェクト名（`--project` で上書き可） | はい |
-| `COSENSE_SID` | セッションID（プライベートプロジェクト、create/insert/edit/delete/context 操作に必要） | 条件付き |
-| `COSENSE_ENABLE_DELETE` | `true` のときだけ `delete` サブコマンドが使える | いいえ |
+| `COSENSE_SID` | セッションID（プライベートプロジェクト、create/insert/edit/delete-lines/delete/rewrite/context 操作に必要） | 条件付き |
+| `COSENSE_ENABLE_DELETE` | `true` のときだけ `delete` / `rewrite` サブコマンドが使える | いいえ |
 
 ### 永続化方法
 

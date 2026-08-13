@@ -15,6 +15,8 @@ import * as getPageUrlHandler from '@/routes/handlers/get-page-url.js';
 import * as insertLinesHandler from '@/routes/handlers/insert-lines.js';
 import * as editLinesHandler from '@/routes/handlers/edit-lines.js';
 import * as deletePageHandler from '@/routes/handlers/delete-page.js';
+import * as deleteLinesHandler from '@/routes/handlers/delete-lines.js';
+import * as rewritePageHandler from '@/routes/handlers/rewrite-page.js';
 
 jest.mock('@/routes/handlers/get-page.js');
 jest.mock('@/routes/handlers/list-pages.js');
@@ -24,6 +26,8 @@ jest.mock('@/routes/handlers/get-page-url.js');
 jest.mock('@/routes/handlers/insert-lines.js');
 jest.mock('@/routes/handlers/edit-lines.js');
 jest.mock('@/routes/handlers/delete-page.js');
+jest.mock('@/routes/handlers/delete-lines.js');
+jest.mock('@/routes/handlers/rewrite-page.js');
 
 const mockedGetPage = getPageHandler as jest.Mocked<typeof getPageHandler>;
 const mockedListPages = listPagesHandler as jest.Mocked<typeof listPagesHandler>;
@@ -33,6 +37,8 @@ const mockedGetPageUrl = getPageUrlHandler as jest.Mocked<typeof getPageUrlHandl
 const mockedInsertLines = insertLinesHandler as jest.Mocked<typeof insertLinesHandler>;
 const mockedEditLines = editLinesHandler as jest.Mocked<typeof editLinesHandler>;
 const mockedDeletePage = deletePageHandler as jest.Mocked<typeof deletePageHandler>;
+const mockedDeleteLines = deleteLinesHandler as jest.Mocked<typeof deleteLinesHandler>;
+const mockedRewritePage = rewritePageHandler as jest.Mocked<typeof rewritePageHandler>;
 
 // Mock process.exit to prevent test process from exiting
 const mockExit = jest.spyOn(process, 'exit').mockImplementation((() => {
@@ -420,6 +426,97 @@ describe('CLI', () => {
         // process.exit
       }
       expect(stderrOutput).toContain('Page title is required');
+    });
+  });
+
+  describe('delete-lines command', () => {
+    it('should call handleDeleteLines with all params', async () => {
+      mockedDeleteLines.handleDeleteLines.mockResolvedValue(successResult);
+      try {
+        await runCli(['delete-lines', 'My Page', '--target=old line']);
+      } catch {
+        // process.exit
+      }
+      expect(mockedDeleteLines.handleDeleteLines).toHaveBeenCalledWith(
+        'test-project',
+        'test-sid',
+        {
+          pageTitle: 'My Page',
+          targetLineText: 'old line',
+          matchAll: false,
+          projectName: undefined,
+          compact: false,
+        }
+      );
+    });
+
+    it('should pass matchAll when --all flag is set', async () => {
+      mockedDeleteLines.handleDeleteLines.mockResolvedValue(successResult);
+      try {
+        await runCli(['delete-lines', 'My Page', '--target=old', '--all']);
+      } catch {
+        // process.exit
+      }
+      expect(mockedDeleteLines.handleDeleteLines).toHaveBeenCalledWith(
+        'test-project',
+        'test-sid',
+        expect.objectContaining({ matchAll: true })
+      );
+    });
+
+    it('should error when --target is missing', async () => {
+      try {
+        await runCli(['delete-lines', 'My Page']);
+      } catch {
+        // process.exit
+      }
+      expect(stderrOutput).toContain('--target=TEXT is required');
+    });
+  });
+
+  describe('rewrite command', () => {
+    it('should call handleRewritePage with all params', async () => {
+      mockedRewritePage.handleRewritePage.mockResolvedValue(successResult);
+      try {
+        await runCli(['rewrite', 'My Page', '--body=new content']);
+      } catch {
+        // process.exit
+      }
+      expect(mockedRewritePage.handleRewritePage).toHaveBeenCalledWith(
+        'test-project',
+        'test-sid',
+        {
+          pageTitle: 'My Page',
+          body: 'new content',
+          format: undefined,
+          dryRun: false,
+          projectName: undefined,
+          compact: false,
+        }
+      );
+    });
+
+    it('should pass dryRun when --dry-run flag is set', async () => {
+      mockedRewritePage.handleRewritePage.mockResolvedValue(successResult);
+      try {
+        await runCli(['rewrite', 'My Page', '--body=new', '--dry-run']);
+      } catch {
+        // process.exit
+      }
+      expect(mockedRewritePage.handleRewritePage).toHaveBeenCalledWith(
+        'test-project',
+        'test-sid',
+        expect.objectContaining({ dryRun: true })
+      );
+    });
+
+    it('should error when --body is missing', async () => {
+      try {
+        await runCli(['rewrite', 'My Page']);
+      } catch {
+        // process.exit
+      }
+      expect(stderrOutput).toContain('--body=TEXT or --body-file=PATH is required');
     });
   });
 
