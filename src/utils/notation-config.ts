@@ -85,7 +85,11 @@ export function buildNotationGuide(config: NotationConfig): string {
   sections.push(`TEXT FORMATTING:
 ${buildHeadingGuide(maxLevel)}
  For inline emphasis (including inside table cells), use [* text]. Do NOT use [[text]] for bold — it renders as bold-ish but is easily confused with internal links, and notably does NOT bold inside table cells.
- [/ text] = italic, [- text] = strikethrough`);
+ [/ text] = italic, [- text] = strikethrough
+ NEVER put inline code (backticks) inside [* ], [/ ] or [- ]. Cosense tokenizes inline code BEFORE decorations, so the decoration never forms and the reader sees a literal "[*" and "]". Move the backticked term outside the brackets.
+   BAD:  [* \`usb-check.timer\`の初回はその月の15日]
+   GOOD: [* 初回はその月の15日]。\`usb-check.timer\`の話
+ Bracketed links inside a decoration ARE fine: [* [Plex]への影響は無い] renders correctly.`);
 
   // Structure
   const blankLineRule = blankLineBeforeHeading
@@ -101,6 +105,7 @@ ${buildHeadingGuide(maxLevel)}
  Inline: \`code\`
  Block: a "code:filename" line, followed by body lines each indented ONE space deeper than the "code:" line.
  INDENT CONSISTENCY IS MANDATORY: place "code:" at the SAME indent as its sibling bullets, then indent every body line exactly one more space. Getting this wrong breaks rendering.
+ NEVER put a blank line inside a code block. A blank line TERMINATES the block, so everything below it falls outside the code frame. To break up a long procedure, split it into several code: blocks with explanatory bullets between them, or use a comment line (#) as a separator.
  Example inside a nested [* section] (the section's content sits at one indent; the code block sits there too):
    [* section]
     intro bullet

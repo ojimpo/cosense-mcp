@@ -2,6 +2,7 @@ import { patch } from '@cosense/std/websocket';
 import type { BaseLine } from '@cosense/types/rest';
 import { convertMarkdownToScrapbox } from '../../utils/markdown-converter.js';
 import { formatError, stringifyError } from '../../utils/format.js';
+import { lintScrapboxText, formatLintWarnings, getLintMode } from '../../utils/notation-lint.js';
 import { selectBlockMatch, formatMatchStarts, type BlockMatch } from '../../utils/line-match.js';
 
 export interface InsertLinesParams {
@@ -40,6 +41,18 @@ export async function handleInsertLines(
     } else {
       // Default: scrapbox — pass through as-is
       convertedText = params.text;
+    }
+
+    // 書き込み前の記法リント（保存はされるが表示が壊れる記法を検出する）
+    const lintMode = getLintMode();
+    const lintWarnings = lintMode === 'off' ? [] : lintScrapboxText(convertedText);
+    if (lintMode === 'strict' && lintWarnings.length > 0) {
+      return formatError(formatLintWarnings(lintWarnings, false), {
+        Operation: 'insert_lines',
+        Project: projectName,
+        Page: params.pageTitle,
+        Timestamp: new Date().toISOString(),
+      }, params.compact);
     }
 
     // WebSocket経由でページを更新
@@ -101,10 +114,11 @@ export async function handleInsertLines(
         : `found ${matchCount} matches — inserted after the first (pass occurrence=N to target another)`;
 
     if (params.compact) {
+      const suffix = lintWarnings.length > 0 ? ` | notation warnings: ${lintWarnings.length}` : '';
       return {
         content: [{
           type: "text",
-          text: `inserted: ${insertedLinesCount} lines into ${params.pageTitle}`
+          text: `inserted: ${insertedLinesCount} lines into ${params.pageTitle}${suffix}`
         }]
       };
     }
@@ -119,7 +133,8 @@ export async function handleInsertLines(
           `Page: ${params.pageTitle}`,
           `Target line: "${params.targetLineText}" (${targetLineFound})`,
           `Inserted lines: ${insertedLinesCount}`,
-          `Timestamp: ${new Date().toISOString()}`
+          `Timestamp: ${new Date().toISOString()}`,
+          ...(lintWarnings.length > 0 ? ['', formatLintWarnings(lintWarnings, true)] : []),
         ].join('\n')
       }]
     };

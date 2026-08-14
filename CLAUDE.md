@@ -87,6 +87,7 @@ All tools are also available as CLI subcommands (`get`, `list`, `search`, `creat
 - `src/utils/format.ts` — Response formatting, `stringifyError`, `formatError`
 - `src/utils/sort.ts` — Sorting with pinned page filtering
 - `src/utils/markdown-converter.ts` — Markdown → Scrapbox conversion (uses `md2sb`)
+- `src/utils/notation-lint.ts` — Pre-write lint for notation that the API accepts but Cosense renders wrong
 - `src/types/` — API response and MCP request/response type definitions
 - `src/cli.ts` — CLI entry point (args → CLI mode, no args → MCP server)
 - `src/index.ts` — Server entry point
@@ -98,6 +99,7 @@ All tools are also available as CLI subcommands (`get`, `list`, `search`, `creat
 - **`insert_lines` uses exact match**. Partial match risks inserting at unintended lines
 - **`patch()` returns `Result<string, PushError>`**, not throw. Must check `result.ok`
 - **Default sort is `updated`**. Aligned across API, display, and user expectations
+- **Notation lint warns by default, it does not block.** The Cosense API stores whatever bytes it is given — breakage happens at render time, so the only place to catch it is before the write. Rules live in `src/utils/notation-lint.ts` and are validated against `@progfay/scrapbox-parser`, the parser Cosense actually renders with. Blocking is opt-in (`COSENSE_LINT=strict`) so a lint false positive can never make content unwritable
 
 ### Environment Variables
 
@@ -109,6 +111,7 @@ See README.md. Key variables:
 - `COSENSE_CONVERT_NUMBERED_LISTS` — Convert numbered lists to bullet lists
 - `COSENSE_NOTATION_CONFIG` — Path to notation config JSON (heading levels, math, linking, custom rules)
 - `COSENSE_NOTATION_PAGE` — Cosense page title holding user-editable custom rules; appended to the `get_notation_guide` response as highest-priority rules (fetched per call, no restart needed)
+- `COSENSE_LINT` — Pre-write notation lint: `warn` (default — writes, then warns), `strict` (rejects the write), `off`
 
 ## CI/CD & Release
 

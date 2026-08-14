@@ -2,6 +2,7 @@ import { patch } from '@cosense/std/websocket';
 import type { BaseLine } from '@cosense/types/rest';
 import { convertMarkdownToScrapbox } from '../../utils/markdown-converter.js';
 import { formatError, stringifyError } from '../../utils/format.js';
+import { lintScrapboxText, formatLintWarnings, getLintMode } from '../../utils/notation-lint.js';
 import { selectBlockMatch, formatMatchStarts, AMBIGUITY_HINT, type BlockMatch } from '../../utils/line-match.js';
 
 export interface ReplaceLinesParams {
@@ -38,6 +39,18 @@ export async function handleReplaceLines(
       convertedText = await convertMarkdownToScrapbox(params.newText, { convertNumberedLists });
     } else {
       convertedText = params.newText;
+    }
+
+    // 書き込み前の記法リント（保存はされるが表示が壊れる記法を検出する）
+    const lintMode = getLintMode();
+    const lintWarnings = lintMode === 'off' ? [] : lintScrapboxText(convertedText);
+    if (lintMode === 'strict' && lintWarnings.length > 0) {
+      return formatError(formatLintWarnings(lintWarnings, false), {
+        Operation: 'replace_lines',
+        Project: projectName,
+        Page: params.pageTitle,
+        Timestamp: new Date().toISOString(),
+      }, params.compact);
     }
 
     let match: BlockMatch | undefined;
@@ -98,10 +111,11 @@ export async function handleReplaceLines(
     const replacedLinesCount = convertedText.split('\n').length;
 
     if (params.compact) {
+      const suffix = lintWarnings.length > 0 ? ` | notation warnings: ${lintWarnings.length}` : '';
       return {
         content: [{
           type: "text",
-          text: `replaced: ${targetLinesCount} line(s) → ${replacedLinesCount} line(s) in ${params.pageTitle}`
+          text: `replaced: ${targetLinesCount} line(s) → ${replacedLinesCount} line(s) in ${params.pageTitle}${suffix}`
         }]
       };
     }
@@ -116,7 +130,8 @@ export async function handleReplaceLines(
           `Page: ${params.pageTitle}`,
           `Target block: "${params.targetLineText}" (${targetLinesCount} line(s))`,
           `Replacement lines: ${replacedLinesCount}`,
-          `Timestamp: ${new Date().toISOString()}`
+          `Timestamp: ${new Date().toISOString()}`,
+          ...(lintWarnings.length > 0 ? ['', formatLintWarnings(lintWarnings, true)] : []),
         ].join('\n')
       }]
     };
