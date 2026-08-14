@@ -1,6 +1,7 @@
 import { createPageUrl, getPage } from "../../cosense.js";
 import { convertMarkdownToScrapbox } from '../../utils/markdown-converter.js';
 import { formatError, stringifyError } from '../../utils/format.js';
+import { lintScrapboxText, formatLintWarnings, getLintMode } from '../../utils/notation-lint.js';
 import { patch } from '@cosense/std/websocket';
 import type { BaseLine } from '@cosense/types/rest';
 
@@ -35,6 +36,20 @@ export async function handleCreatePage(
         // Default: scrapbox — pass through as-is
         convertedBody = body;
       }
+    }
+
+    // 書き込み前の記法リント（保存はされるが表示が壊れる記法を検出する）
+    const lintMode = getLintMode();
+    const lintWarnings = lintMode === 'off' || !convertedBody
+      ? []
+      : lintScrapboxText(convertedBody);
+    if (lintMode === 'strict' && lintWarnings.length > 0) {
+      return formatError(formatLintWarnings(lintWarnings, false), {
+        Operation: 'create_page',
+        Project: projectName,
+        Title: title,
+        Timestamp: new Date().toISOString(),
+      }, params.compact);
     }
 
     // WebSocket APIで実際にページを作成
@@ -76,10 +91,11 @@ export async function handleCreatePage(
 
       const url = createPageUrl(projectName, title);
       if (params.compact) {
+        const suffix = lintWarnings.length > 0 ? ` | notation warnings: ${lintWarnings.length}` : '';
         return {
           content: [{
             type: "text",
-            text: `created: ${title} | ${url}`
+            text: `created: ${title} | ${url}${suffix}`
           }]
         };
       }
@@ -93,7 +109,8 @@ export async function handleCreatePage(
             `Title: ${title}`,
             `Lines: ${allLines.length}`,
             `URL: ${url}`,
-            `Timestamp: ${new Date().toISOString()}`
+            `Timestamp: ${new Date().toISOString()}`,
+            ...(lintWarnings.length > 0 ? ['', formatLintWarnings(lintWarnings, true)] : []),
           ].join('\n')
         }]
       };
