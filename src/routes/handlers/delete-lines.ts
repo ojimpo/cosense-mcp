@@ -29,10 +29,20 @@ export async function handleDeleteLines(
     }
 
     let match: BlockMatch | undefined;
+    let wouldDeleteTitle = false;
     const result = await patch(projectName, params.pageTitle, (lines: BaseLine[]) => {
+      // patch がコンフリクトでリトライした場合に前回の結果が残らないようリセットする
+      wouldDeleteTitle = false;
       match = selectBlockMatch(lines, params.targetLineText, params.occurrence);
 
       if (match.selected === undefined) {
+        return undefined; // abort
+      }
+
+      // 先頭行はタイトル。削除するとページのリネーム（または全行削除による消滅）になるため拒否する。
+      // delete_lines はオプトイン制でないので、ここが delete_page への抜け穴になってはならない。
+      if (match.selected === 0) {
+        wouldDeleteTitle = true;
         return undefined; // abort
       }
 
@@ -63,6 +73,13 @@ export async function handleDeleteLines(
       return formatError(
         `Multiple locations matched (${match.matchStarts.length} matches, starting at lines ${formatMatchStarts(match.matchStarts)}; line 1 = title). ${AMBIGUITY_HINT}`,
         { ...errorContext, 'Match count': String(match.matchStarts.length) },
+        params.compact
+      );
+    }
+    if (wouldDeleteTitle) {
+      return formatError(
+        'Refusing to delete the title line (line 1). Deleting it would rename or remove the page. Use rename_page to change the title.',
+        errorContext,
         params.compact
       );
     }

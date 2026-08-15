@@ -78,6 +78,52 @@ describe('handleDeleteLines', () => {
       expect(result.content[0]?.text).toContain('Multiple locations matched');
       expect(result.content[0]?.text).toContain('2 matches');
     });
+
+    it('タイトル行を対象にした場合は削除せずエラーを返す', async () => {
+      let capturedResult: any = 'not-called';
+      mockedPatch.mockImplementation(async (_project, _title, updateFn) => {
+        const mockLines = [
+          { text: 'title', id: 'l1' },
+          { text: 'body', id: 'l2' },
+        ] as any;
+        capturedResult = updateFn(mockLines, {} as any);
+        return { ok: true, val: 'commitId', err: null };
+      });
+
+      const params = {
+        pageTitle: 'Test Page',
+        targetLineText: 'title',
+      };
+      const result = await handleDeleteLines(mockProjectName, mockCosenseSid, params);
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0]?.text).toContain('Refusing to delete the title line');
+      // patch を中断していること（行を返すと書き込まれてしまう）
+      expect(capturedResult).toBeUndefined();
+    });
+
+    it('タイトル行から始まるブロックも削除を拒否する', async () => {
+      let capturedResult: any = 'not-called';
+      mockedPatch.mockImplementation(async (_project, _title, updateFn) => {
+        const mockLines = [
+          { text: 'title', id: 'l1' },
+          { text: 'body', id: 'l2' },
+          { text: 'tail', id: 'l3' },
+        ] as any;
+        capturedResult = updateFn(mockLines, {} as any);
+        return { ok: true, val: 'commitId', err: null };
+      });
+
+      const params = {
+        pageTitle: 'Test Page',
+        targetLineText: 'title\nbody',
+      };
+      const result = await handleDeleteLines(mockProjectName, mockCosenseSid, params);
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0]?.text).toContain('Refusing to delete the title line');
+      expect(capturedResult).toBeUndefined();
+    });
   });
 
   describe('正常ケース', () => {

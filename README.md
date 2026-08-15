@@ -53,7 +53,7 @@ Claude.ai → HTTPS → Cloudflare Tunnel → Docker Container (Express + MCP)
 | `create_page` | 新規ページ作成（WebSocket経由） | 必須 |
 | `insert_lines` | 指定行（複数行ブロック可）の後にテキスト挿入 | 必須 |
 | `replace_lines` | 指定行・連続ブロックを置換（完全一致。重複時は`occurrence`でN番目を指定） | 必須 |
-| `delete_lines` | 指定行・連続ブロックを削除（完全一致。重複時は`occurrence`でN番目を指定） | 必須 |
+| `delete_lines` | 指定行・連続ブロックを削除（完全一致。重複時は`occurrence`でN番目を指定。タイトル行は削除不可） | 必須 |
 | `get_smart_context` | ページと関連ページ（1-2ホップ）をまとめて取得 | 必須 |
 | `get_page_url` | ページURLの生成 | 不要 |
 | `get_notation_guide` | Cosense記法ガイドの取得（書き込み前に呼ぶ） | 不要 |

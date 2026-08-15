@@ -36,6 +36,22 @@ git fetch upstream
 git merge upstream/main
 ```
 
+現在の取り込み済み地点: upstream v0.10.0。
+
+### 意図的に取り込んでいない upstream のツール
+
+マージで再登場するので、衝突したら毎回同じ判断をすること。
+
+| upstream | 判断 | 理由 |
+|---|---|---|
+| `edit_lines` | 取り込まない | フォークの`replace_lines`が上位互換。`occurrence`指定＋曖昧時エラー（upstreamは黙って先頭1件、または`matchAll`で全件）、記法リント配線済み、formatデフォルトが`scrapbox` |
+| `delete_page` | 取り込まない | `cosense-mcp.ojimpo.com`は認証なしのCustom Connectorで公開している。`COSENSE_ENABLE_DELETE`でデフォルトoffとはいえ、ページ全消しのコードパスを公開エンドポイントに置かない |
+| `rewrite_page` | 取り込まない | 同上（ページ全書き換え） |
+
+upstream由来で取り込んだもの: `delete_lines`のタイトル行削除ガード（フォークの実装に移植）。
+
+CLIサブコマンド名もフォーク側を維持している（`replace` / `delete`）。upstreamは`edit` / `delete-lines` / `delete`(=delete_page)。
+
 ## Commands
 
 ```bash
@@ -59,7 +75,7 @@ npm run inspector    # Debug with MCP Inspector
 | `get_page_url` | Generate URL from page title | - |
 | `insert_lines` | Insert text after a target line/block (exact match, `occurrence` for duplicates). Appends to end if not found | SID |
 | `replace_lines` | Replace a line or consecutive block (exact match, `occurrence` for duplicates). Supports N→M line expansion | SID |
-| `delete_lines` | Delete a line or consecutive block (exact match, `occurrence` for duplicates) | SID |
+| `delete_lines` | Delete a line or consecutive block (exact match, `occurrence` for duplicates). Refuses to delete the title line | SID |
 | `get_smart_context` | Get page + linked pages (1-hop/2-hop) in AI-optimized format | SID |
 | `get_notation_guide` | Return the full Cosense notation guide (call before writing content) | - |
 | `rename_page` | Rename a page by rewriting its title line. Backlinks are NOT auto-updated (response lists candidates) | SID |
