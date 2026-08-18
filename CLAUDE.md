@@ -101,6 +101,7 @@ See README.md. Key variables:
 ### Release Process
 
 1. Create `release/vX.Y.Z` branch, bump version in `package.json` + `manifest.json` + `.claude-plugin/plugin.json`
+   - Note: the MCP `serverInfo.version` is read from `package.json` at runtime, so no separate bump is needed for `src/index.ts`
 2. Create PR → CI passes → merge
 3. Everything after merge is automatic (tag → npm → GitHub Release → .mcpb)
 
