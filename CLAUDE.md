@@ -141,7 +141,12 @@ OAuthを入れて前提が消えたので取り込んだ。同じ問いが再燃
 - CLIサブコマンドは`delete-page` / `rewrite`（フォークの`delete`は`delete_lines`のため）
 - **本番で有効にするならコネクタの再追加が必要**（`tools/list`が変わるため）
 
-CLIサブコマンド名もフォーク側を維持している（`replace` / `delete`）。upstreamは`edit` / `delete-lines` / `delete`(=delete_page)。
+CLIサブコマンド名: フォークは`replace`（upstreamは`edit`）。行削除は**`delete-lines`でupstreamと揃えた**。
+
+**`delete` は受け付けない。** upstreamでは`delete`=ページ削除、フォークでは`delete`=行削除だった。
+`delete_page`を取り込んだ結果、同じ名前が両方に存在して意味が逆という状態になったので、
+曖昧さを説明して`exit 2`するだけのコマンドにしてある。**どちらの癖で打っても、黙って違うことが起きない。**
+名前を復活させるなら、必ずどちらか一方の意味に固定できる根拠を先に用意すること。
 
 ## Commands
 
@@ -175,7 +180,7 @@ npm run inspector    # Debug with MCP Inspector
 
 ### CLI
 
-All tools are also available as CLI subcommands (`get`, `list`, `search`, `create`, `url`, `insert`, `replace`, `delete`, `context`, `guide`, `rename`, `delete-page`, `rewrite`). Run `scrapbox-cosense-mcp <command> --help` for usage. Key flags:
+All tools are also available as CLI subcommands (`get`, `list`, `search`, `create`, `url`, `insert`, `replace`, `delete-lines`, `context`, `guide`, `rename`, `delete-page`, `rewrite`). Bare `delete` is rejected on purpose — see the fork/upstream naming note above. Run `scrapbox-cosense-mcp <command> --help` for usage. Key flags:
 
 - `--compact` — Token-efficient output (85% smaller for list)
 - `--json` — JSON output

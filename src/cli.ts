@@ -13,7 +13,7 @@ import { handleRenamePage } from './routes/handlers/rename-page.js';
 import { handleDeletePage } from './routes/handlers/delete-page.js';
 import { handleRewritePage } from './routes/handlers/rewrite-page.js';
 
-const CLI_COMMANDS = ['get', 'list', 'search', 'create', 'url', 'insert', 'replace', 'delete', 'context', 'guide', 'rename', 'delete-page', 'rewrite'] as const;
+const CLI_COMMANDS = ['get', 'list', 'search', 'create', 'url', 'insert', 'replace', 'delete', 'delete-lines', 'context', 'guide', 'rename', 'delete-page', 'rewrite'] as const;
 type CliCommand = typeof CLI_COMMANDS[number];
 
 interface ParsedArgs {
@@ -195,6 +195,20 @@ Options:
 
 ${COMMON_OPTIONS}`,
 
+  'delete-lines': `Usage: scrapbox-cosense-mcp delete-lines <title> --target=TEXT [options]
+
+Delete a line, or a contiguous block of lines, from a page. Exact match only.
+Refuses to delete the title line.
+
+Arguments:
+  <title>                        Title of the page to modify
+
+Options:
+  --target=TEXT                  Exact text of the line(s) to delete (required)
+  --occurrence=N                 1-based index when the target matches more than once
+
+${COMMON_OPTIONS}`,
+
   'delete-page': `Usage: scrapbox-cosense-mcp delete-page <title> [options]
 
 Delete an entire page. Empties every line; Cosense removes a page once all of
@@ -256,7 +270,7 @@ Commands:
   url <title>                    Get page URL
   insert <title>                 Insert lines into a page
   replace <title>                Replace a line in a page
-  delete <title>                 Delete a line from a page
+  delete-lines <title>           Delete a line from a page
   context <title>                Get smart context (related pages)
   rename <title>                 Rename a page
   delete-page <title>            Delete an entire page (needs COSENSE_ENABLE_DELETE)
@@ -586,14 +600,26 @@ export async function runCli(argv: string[]): Promise<void> {
     }
 
     case 'delete': {
+      // `delete` は upstream ではページ削除、このフォークでは行削除だった。
+      // 両方のツールが揃った今、同じ名前で意味が逆なのは事故のもとなので受け付けない。
+      process.stderr.write(
+        'Error: `delete` is ambiguous and has been removed.\n' +
+        '  scrapbox-cosense-mcp delete-lines <title> --target=TEXT   Delete line(s) from a page\n' +
+        '  scrapbox-cosense-mcp delete-page <title>                  Delete the whole page\n'
+      );
+      process.exit(2);
+      break;
+    }
+
+    case 'delete-lines': {
       const pageTitle = positional[0];
       if (!pageTitle) {
-        process.stderr.write('Error: Page title is required. Usage: scrapbox-cosense-mcp delete <title> --target=TEXT\n');
+        process.stderr.write('Error: Page title is required. Usage: scrapbox-cosense-mcp delete-lines <title> --target=TEXT\n');
         process.exit(2);
       }
       const deleteTarget = typeof flags['target'] === 'string' ? unescapeString(flags['target']) : undefined;
       if (!deleteTarget) {
-        process.stderr.write('Error: --target=TEXT is required. Usage: scrapbox-cosense-mcp delete <title> --target=TEXT\n');
+        process.stderr.write('Error: --target=TEXT is required. Usage: scrapbox-cosense-mcp delete-lines <title> --target=TEXT\n');
         process.exit(2);
       }
       const project = requireProjectName(flags);

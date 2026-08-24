@@ -40,7 +40,9 @@ export async function handleDeleteLines(
       }
 
       // 先頭行はタイトル。削除するとページのリネーム（または全行削除による消滅）になるため拒否する。
-      // delete_lines はオプトイン制でないので、ここが delete_page への抜け穴になってはならない。
+      // delete_page がゲートの内側にある以上、ゲートの外側にある delete_lines から
+      // 同じことができてはならない。認証の有無とは無関係に、行編集ツールが
+      // ページのリネームや消滅を起こすこと自体が驚きなので、常に拒否する。
       if (match.selected === 0) {
         wouldDeleteTitle = true;
         return undefined; // abort

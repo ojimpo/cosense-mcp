@@ -17,7 +17,11 @@ Cosense ページの取得・検索・作成・編集。CLI 経由で実行。
 - `scrapbox-cosense-mcp create <title> [--body=TEXT]` — ページ作成（markdown自動変換）
 - `scrapbox-cosense-mcp insert <title> --after=TEXT --text=TEXT` — 行挿入
 - `scrapbox-cosense-mcp replace <title> --target=TEXT --text=TEXT [--occurrence=N]` — 行置換（完全一致、複数行ブロック対応）
-- `scrapbox-cosense-mcp delete <title> --target=TEXT [--occurrence=N]` — 行削除（完全一致、複数行ブロック対応。タイトル行は削除不可）
+- `scrapbox-cosense-mcp delete-lines <title> --target=TEXT [--occurrence=N]` — 行削除（完全一致、複数行ブロック対応。タイトル行は削除不可）
+- `scrapbox-cosense-mcp delete-page <title> [--dry-run]` — ページごと削除。取り消せない。`COSENSE_ENABLE_DELETE=true` が必要
+- `scrapbox-cosense-mcp rewrite <title> --body=TEXT [--dry-run]` — ページ全体を置き換え。取り消せない。`COSENSE_ENABLE_DELETE=true` が必要
+
+`delete` という名前は使わない（upstream ではページ削除、以前のこのCLIでは行削除を指していたため廃止した）。
 - `scrapbox-cosense-mcp url <title>` — URL生成
 - `scrapbox-cosense-mcp context <title> [--hop=1|2]` — 関連ページ一括取得（Smart Context）
 - `scrapbox-cosense-mcp rename <title> --to=NEW_TITLE` — ページリネーム（リンクは自動更新されない）

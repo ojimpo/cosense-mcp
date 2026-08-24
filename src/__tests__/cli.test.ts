@@ -107,6 +107,40 @@ describe('CLI', () => {
     });
   });
 
+  describe('delete の曖昧さ', () => {
+    // upstream では delete=ページ削除、以前のこのCLIでは delete=行削除だった。
+    // delete_page を取り込んだ結果、同じ名前で意味が逆になったので受け付けない。
+    it('`delete` は実行せずに exit 2 で落ちる', async () => {
+      try {
+        await runCli(['delete', 'My Page', '--target=x']);
+      } catch {
+        // mocked process.exit
+      }
+
+      expect(stderrOutput).toContain('`delete` is ambiguous');
+      expect(stderrOutput).toContain('delete-lines');
+      expect(stderrOutput).toContain('delete-page');
+      expect(mockExit).toHaveBeenCalledWith(2);
+    });
+
+    it('`delete-lines` は行削除として動く', async () => {
+      const deleteLines = await import('@/routes/handlers/delete-lines.js');
+      const spy = jest.spyOn(deleteLines, 'handleDeleteLines').mockResolvedValue(successResult);
+
+      try {
+        await runCli(['delete-lines', 'My Page', '--target=old line']);
+      } catch {
+        // mocked process.exit
+      }
+
+      expect(spy).toHaveBeenCalledWith('test-project', 'test-sid', expect.objectContaining({
+        pageTitle: 'My Page',
+        targetLineText: 'old line',
+      }));
+      spy.mockRestore();
+    });
+  });
+
   describe('get command', () => {
     it('should call handleGetPage with correct params', async () => {
       mockedGetPage.handleGetPage.mockResolvedValue(successResult);
