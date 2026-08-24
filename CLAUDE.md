@@ -41,6 +41,31 @@ Claude.aiの`static_headers`はbeta。両方から使う前提なら OAuth 一�
 - **RFC 9728 のメタデータをSDKはパス付きURLにしか置かない。** パス無しを見に来るクライアントのため
   `/.well-known/oauth-protected-resource` にも同じ内容を置いている
 
+### 同意画面で踏んだ罠（2026-08-24、本番で2回失敗した）
+
+**どちらも curl では再現しない。** CSPもフォームの暗黙送信もブラウザ側の挙動なので、
+curlプローブとJestの結合テストは壊れたフローを全部素通りした。同意画面を触ったら
+**実ブラウザで1回通すまで直ったと思わないこと**。
+
+- **CSPの`form-action`はリダイレクト先にも適用される。** `form-action 'self'` だけだと、
+  承認後の `302 → https://claude.ai/api/mcp/auth_callback` をブラウザがブロックする。
+  サーバーログには `consent approved` が出ているのに、利用者には「ボタンを押しても無反応」に見える。
+  同意画面を出す時点の `redirect_uri` のオリジンを `form-action` に足すこと（クライアントごとに違う）
+- **HTMLの暗黙送信はDOM順で最初のsubmitボタンを送る。** `Deny` を先に置くと、
+  パスフレーズ欄でEnterを押した利用者が拒否を送る。`Approve` をDOM上で先に置き、
+  見た目の並びはCSSの `order` で調整する。`Deny` には `formnovalidate` が要る
+  （パスフレーズ欄が `required` なので、無いと拒否すらできない）
+- **承認は冪等にしておく。** pendingを承認時に消すと、二重送信・戻るボタン・
+  リダイレクトが見えなかった押し直しが全部「expired」の行き止まりになる。
+  pendingはTTLまで残し、同じ認可コードを返す（コードの単発性はトークンEP側で担保される）
+
+**ログのミドルウェアはOAuthルーターより先にmountする。** 後ろに置くと `/authorize`・`/token`・
+`/oauth/consent` が一切ログに残らず、認可の失敗を追う手段が無くなる。上の2つはログを出して初めて
+「1回目の承認は成功していた」と分かった。
+
+`Claude.ai` は `initialize` の前に `server/discover` を投げてくる。セッション無しなので400を返すが、
+クライアントは `initialize` にフォールバックするので実害は無い。
+
 リソース識別子は `<MCP_PUBLIC_URL の origin>/mcp`。**利用者が入力するURLと完全一致していないと
 再認可ループに入る**ので、`MCP_PUBLIC_URL` を変えるときはクライアント側の登録も揃えること。
 
