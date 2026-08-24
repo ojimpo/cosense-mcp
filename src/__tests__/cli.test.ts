@@ -107,6 +107,32 @@ describe('CLI', () => {
     });
   });
 
+  describe('COSENSE_PROJECT_ALLOW_LIST', () => {
+    it('リスト外の --project は実行前に exit 2 で止まる', async () => {
+      process.env.COSENSE_PROJECT_ALLOW_LIST = 'kouki';
+      try {
+        await runCli(['get', 'My Page', '--project=other']);
+      } catch {
+        // mocked process.exit
+      }
+
+      expect(stderrOutput).toContain("Project 'other' is not allowed");
+      expect(mockedGetPage.handleGetPage).not.toHaveBeenCalled();
+      delete process.env.COSENSE_PROJECT_ALLOW_LIST;
+    });
+
+    it('未設定なら従来どおり任意のプロジェクトを指定できる', async () => {
+      mockedGetPage.handleGetPage.mockResolvedValue(successResult);
+      try {
+        await runCli(['get', 'My Page', '--project=other']);
+      } catch {
+        // mocked process.exit
+      }
+
+      expect(mockedGetPage.handleGetPage).toHaveBeenCalled();
+    });
+  });
+
   describe('delete の曖昧さ', () => {
     // upstream では delete=ページ削除、以前のこのCLIでは delete=行削除だった。
     // delete_page を取り込んだ結果、同じ名前で意味が逆になったので受け付けない。

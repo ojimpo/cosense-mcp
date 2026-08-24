@@ -12,6 +12,7 @@ import { handleGetNotationGuide } from './routes/handlers/get-notation-guide.js'
 import { handleRenamePage } from './routes/handlers/rename-page.js';
 import { handleDeletePage } from './routes/handlers/delete-page.js';
 import { handleRewritePage } from './routes/handlers/rewrite-page.js';
+import { checkProjectAllowed } from './utils/project.js';
 
 const CLI_COMMANDS = ['get', 'list', 'search', 'create', 'url', 'insert', 'replace', 'delete', 'delete-lines', 'context', 'guide', 'rename', 'delete-page', 'rewrite'] as const;
 type CliCommand = typeof CLI_COMMANDS[number];
@@ -312,6 +313,15 @@ function requireProjectName(flags: Record<string, string | boolean>): string {
     || process.env.COSENSE_PROJECT_NAME;
   if (!project) {
     process.stderr.write('Error: COSENSE_PROJECT_NAME is not set. Use --project=NAME or set the environment variable.\n');
+    process.exit(2);
+  }
+  // 全サブコマンドがここを通るので、許可リストの判定もここに集約する。
+  const denied = checkProjectAllowed(
+    typeof flags['project'] === 'string' ? flags['project'] : undefined,
+    process.env.COSENSE_PROJECT_NAME
+  );
+  if (denied) {
+    process.stderr.write(`Error: ${denied}\n`);
     process.exit(2);
   }
   return project;

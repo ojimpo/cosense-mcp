@@ -13,6 +13,8 @@ import { handleGetNotationGuide } from './handlers/get-notation-guide.js';
 import { handleRenamePage } from './handlers/rename-page.js';
 import { handleDeletePage } from './handlers/delete-page.js';
 import { handleRewritePage } from './handlers/rewrite-page.js';
+import { checkProjectAllowed } from '../utils/project.js';
+import { formatError } from '../utils/format.js';
 
 // ツール名正規化ヘルパー
 function normalizeToolName(toolName: string, toolSuffix?: string): string {
@@ -34,6 +36,20 @@ export function setupRoutes(
     const { projectName, cosenseSid, toolSuffix } = config;
     const normalizedToolName = normalizeToolName(request.params.name, toolSuffix);
 
+    // 操作対象プロジェクトの制限は、ツールごとではなくここで一度だけ見る。
+    // 各ハンドラに同じチェックを撒くと、ツールを足した人が忘れた時点で穴が開く。
+    // 上書きが入ってくるのはこの境界なので、ここで止めれば全ツールが漏れなく守られる。
+    const requestedProject = request.params.arguments?.projectName;
+    if (typeof requestedProject === 'string') {
+      const denied = checkProjectAllowed(requestedProject, projectName);
+      if (denied) {
+        return formatError(denied, {
+          Operation: normalizedToolName,
+          Project: requestedProject,
+          Timestamp: new Date().toISOString(),
+        });
+      }
+    }
 
     switch (normalizedToolName) {
       case "list_pages":

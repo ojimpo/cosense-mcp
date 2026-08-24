@@ -209,6 +209,13 @@ All tools are also available as CLI subcommands (`get`, `list`, `search`, `creat
 
 ### Design Decisions
 
+- **`COSENSE_PROJECT_ALLOW_LIST` is checked at the two dispatch boundaries, not in each handler.**
+  Every tool accepts a `projectName` override — that is deliberate multi-project support, not a
+  hole. The allowlist only bounds it, and stays unset-means-unrestricted for compatibility. The
+  check lives in `src/routes/index.ts` (MCP) and `requireProjectName` in `src/cli.ts` (CLI)
+  because that is where the override arrives; copying it into all 13 handlers would mean the next
+  tool someone adds silently skips it. Trade-off: calling a handler directly bypasses the check
+
 - **WebSocket API (`@cosense/std`)** is used for `create_page` / `insert_lines` because the REST API has no page creation/editing endpoints
 - **`create_page` rejects existing pages** (`persistent === true`). Without this check, `patch()` silently replaces all content since it's a diff-update API
 - **`insert_lines` uses exact match**. Partial match risks inserting at unintended lines
@@ -228,6 +235,7 @@ See README.md. Key variables:
 - `COSENSE_NOTATION_PAGE` — Cosense page title holding user-editable custom rules; appended to the `get_notation_guide` response as highest-priority rules (fetched per call, no restart needed)
 - `COSENSE_LINT` — Pre-write notation lint: `warn` (default — writes, then warns), `strict` (rejects the write), `off`
 - `COSENSE_ENABLE_DELETE` — Exposes `delete_page` / `rewrite_page`. Unset means they are not registered at all
+- `COSENSE_PROJECT_ALLOW_LIST` — Comma-separated projects the tools may touch. Unset means unrestricted
 - `MCP_PUBLIC_URL` + `MCP_OAUTH_PASSPHRASE` — Enable OAuth. Both required; setting only one throws
 - `MCP_OAUTH_STORE` — Where clients/tokens persist. Unset means a restart forces re-authorization
 - `MCP_ALLOW_UNAUTHENTICATED` — Explicitly allow starting the HTTP transport with no auth
