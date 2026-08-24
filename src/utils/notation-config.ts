@@ -20,15 +20,50 @@ const DEFAULT_CONFIG = {
   blankLineBeforeHeading: false,
 };
 
-export function loadNotationConfig(): NotationConfig {
+/**
+ * 設定がどこから来たか。ガイドの受け手（LLM）が「既定値を見ているのか、
+ * 設定を読んだ結果を見ているのか」を区別できないと、設定漏れに気づけない。
+ */
+export type NotationConfigSource =
+  | { kind: 'defaults' }
+  | { kind: 'file'; path: string }
+  | { kind: 'file-error'; path: string; reason: string };
+
+export interface LoadedNotationConfig {
+  config: NotationConfig;
+  source: NotationConfigSource;
+}
+
+export function loadNotationConfig(): LoadedNotationConfig {
   const configPath = process.env.COSENSE_NOTATION_CONFIG;
-  if (!configPath) return {};
+  if (!configPath) return { config: {}, source: { kind: 'defaults' } };
 
   try {
     const raw = readFileSync(configPath, 'utf-8');
-    return JSON.parse(raw) as NotationConfig;
-  } catch {
-    return {};
+    return { config: JSON.parse(raw) as NotationConfig, source: { kind: 'file', path: configPath } };
+  } catch (error) {
+    // 設定ファイルを指定したのに読めない場合、黙って既定値に落ちると
+    // 「意図した設定が効いている」と誤認させる。素性として持ち回して報告する。
+    return {
+      config: {},
+      source: {
+        kind: 'file-error',
+        path: configPath,
+        reason: error instanceof Error ? error.message : String(error),
+      },
+    };
+  }
+}
+
+/** ガイド末尾に付ける、設定の出どころの1行。 */
+export function describeConfigSource(source: NotationConfigSource): string {
+  switch (source.kind) {
+    case 'file':
+      return `Base guide built from COSENSE_NOTATION_CONFIG (${source.path}).`;
+    case 'file-error':
+      return `Base guide built from BUILT-IN DEFAULTS: COSENSE_NOTATION_CONFIG points at ${source.path} but it could not be read (${source.reason}). The intended settings are NOT in effect.`;
+    case 'defaults':
+      return 'Base guide built from BUILT-IN DEFAULTS (COSENSE_NOTATION_CONFIG is unset).';
   }
 }
 

@@ -1,4 +1,4 @@
-import { loadNotationConfig, buildNotationGuide } from '../../utils/notation-config.js';
+import { loadNotationConfig, buildNotationGuide, describeConfigSource } from '../../utils/notation-config.js';
 import { getPage } from '../../cosense.js';
 
 export interface GetNotationGuideParams {
@@ -48,24 +48,36 @@ export async function handleGetNotationGuide(
   cosenseSid?: string,
   params: GetNotationGuideParams = {},
 ) {
-  const guide = buildNotationGuide(loadNotationConfig());
+  const { config, source } = loadNotationConfig();
+  const guide = buildNotationGuide(config);
 
   const rulesPageTitle = process.env.COSENSE_NOTATION_PAGE;
   const projectName = params.projectName || defaultProjectName;
 
   let customSection = '';
-  if (rulesPageTitle && projectName) {
+  if (!rulesPageTitle) {
+    // 未設定を無言で済ませない。読み手からは「ルールが存在しない」のか
+    // 「存在するがこのデプロイが読んでいない」のか区別できず、
+    // 既定値を最新のプロジェクト方針だと信じて書いてしまう。
+    customSection =
+      '\n\nPROJECT CUSTOM RULES: not configured for this deployment (COSENSE_NOTATION_PAGE is unset).' +
+      '\n If this project keeps a rules page, this server is NOT reading it — the rules below the base guide are missing.';
+  } else if (!projectName) {
+    customSection =
+      `\n\nPROJECT CUSTOM RULES: cannot load "${rulesPageTitle}" — no project name is configured (COSENSE_PROJECT_NAME).`;
+  } else {
     try {
       customSection = '\n' + await buildCustomRulesSection(rulesPageTitle, projectName, cosenseSid);
-    } catch {
-      customSection = `\n\nPROJECT CUSTOM RULES: failed to fetch the rules page "${rulesPageTitle}" — proceeding with the base guide only.`;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      customSection = `\n\nPROJECT CUSTOM RULES: failed to fetch the rules page "${rulesPageTitle}" (${reason}) — proceeding with the base guide only.`;
     }
   }
 
   return {
     content: [{
       type: "text",
-      text: guide + customSection
+      text: `${guide}${customSection}\n\nGUIDE SOURCE: ${describeConfigSource(source)}`
     }]
   };
 }

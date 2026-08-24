@@ -38,13 +38,35 @@ describe('handleGetNotationGuide', () => {
     // Default maxHeadingLevel is 1
     expect(text).toContain('Do NOT use [** text]');
     // COSENSE_NOTATION_PAGE 未設定ならカスタムルールには触れない
-    expect(text).not.toContain('PROJECT CUSTOM RULES');
+    // 未設定を無言で済ませると、受け手は「ルールが無い」のか
+    // 「あるがこのデプロイが読んでいない」のか区別できない。
+    // 2026-08-24 に既定値のガイドをプロジェクト方針と誤認して書いた事故の再発防止。
+    expect(text).toContain('PROJECT CUSTOM RULES: not configured for this deployment');
+    expect(text).toContain('COSENSE_NOTATION_PAGE is unset');
+    // ベースガイドの出どころも明示する
+    expect(text).toContain('GUIDE SOURCE:');
+    expect(text).toContain('BUILT-IN DEFAULTS');
     expect(mockedGetPage).not.toHaveBeenCalled();
   });
 
   describe('COSENSE_NOTATION_PAGE が設定されている場合', () => {
     beforeEach(() => {
       process.env.COSENSE_NOTATION_PAGE = 'notation-rules';
+    });
+
+    test('設定ファイルを読んだ場合は出どころにそのパスを出す', async () => {
+      const original = process.env.COSENSE_NOTATION_CONFIG;
+      process.env.COSENSE_NOTATION_CONFIG = '/nonexistent/notation.config.json';
+      try {
+        const result = await handleGetNotationGuide('test-project', 'sid');
+        const text = result.content[0]?.text ?? '';
+        // 指定したのに読めなかったときは、既定値に落ちたことを隠さない
+        expect(text).toContain('could not be read');
+        expect(text).toContain('NOT in effect');
+      } finally {
+        if (original === undefined) delete process.env.COSENSE_NOTATION_CONFIG;
+        else process.env.COSENSE_NOTATION_CONFIG = original;
+      }
     });
 
     test('appends page content as PROJECT CUSTOM RULES', async () => {
@@ -105,7 +127,8 @@ describe('handleGetNotationGuide', () => {
 
       expect(mockedGetPage).not.toHaveBeenCalled();
       expect(text).toContain('LINKS');
-      expect(text).not.toContain('PROJECT CUSTOM RULES');
+      // 取りに行かなかった理由を言う
+      expect(text).toContain('no project name is configured');
     });
   });
 });

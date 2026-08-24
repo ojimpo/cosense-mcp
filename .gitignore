@@ -26,3 +26,6 @@ coverage/
 *.mcpb
 # 上流に出す前の下書き（投稿したら消す。リポジトリには入れない）
 upstream-drafts/
+
+# ローカル環境の設定補修スクリプト（マシン固有）
+fix-local-mcp-env.sh
