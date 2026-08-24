@@ -24,7 +24,9 @@ MCP化すればこれらが構造的に解決する。tool callの折りたた�
 | **HTTP transport** | Express + `StreamableHTTPServerTransport`。`TRANSPORT=http`で起動 |
 | **セッション管理** | 不明セッションに404を返してクライアントの再接続を誘導 |
 | **OAuth 2.1認証** | Claude.aiとChatGPTの両方が受け付ける唯一の方式。認可サーバーを同梱（DCR・PKCE S256・audience検証） |
-| **Cosense記法デフォルト化** | `format`のデフォルトを`scrapbox`に変更。tool descriptionにCosense記法ガイドを埋め込み |
+| **Cosense記法デフォルト化** | `format`のデフォルトを`scrapbox`に変更。記法ガイドは`get_notation_guide`で提供 |
+| **書き込み前の記法リント** | APIは通るが表示が壊れる記法を、書き込む前に検出して警告 |
+| **`rename_page`** | タイトル行の書き換えによるリネーム |
 | **Docker / CF Tunnel** | Dockerfile、docker-compose.yml、Cloudflare Tunnel経由での公開手順 |
 
 フォーク元のstdio transportもそのまま残してあるので、Claude Desktop / Claude Codeからも引き続き使える。
@@ -32,7 +34,11 @@ MCP化すればこれらが構造的に解決する。tool callの折りたた�
 ## 構成
 
 ```
-Claude.ai → HTTPS → Cloudflare Tunnel → Docker Container (Express + MCP)
+Claude.ai / ChatGPT → HTTPS → Cloudflare Tunnel → Docker Container
+                                                    |
+                                          OAuth 2.1（認可サーバー同居）
+                                                    |
+                                          Express + MCP (Streamable HTTP)
                                               |               |
                                          REST API        WebSocket
                                          (読み取り)       (書き込み)
@@ -41,7 +47,8 @@ Claude.ai → HTTPS → Cloudflare Tunnel → Docker Container (Express + MCP)
 ```
 
 - Cosense REST APIは**読み取り専用**。書き込みはWebSocket（socket.io）経由で`@cosense/std`の`patch()`を使用
-- `connect.sid` cookie（`COSENSE_SID`）で認証
+- Cosenseへの認証は`connect.sid` cookie（`COSENSE_SID`）
+- MCPクライアントからの認証は**OAuth 2.1**。認可サーバーを同じプロセスに同居させている（[認証（OAuth 2.1）](#認証oauth-21)）
 
 ## ツール一覧
 
@@ -58,10 +65,31 @@ Claude.ai → HTTPS → Cloudflare Tunnel → Docker Container (Express + MCP)
 | `get_page_url` | ページURLの生成 | 不要 |
 | `get_notation_guide` | Cosense記法ガイドの取得（書き込み前に呼ぶ） | 不要 |
 | `rename_page` | ページのリネーム（タイトル行の書き換え。他ページからのリンクは自動更新されないため、更新候補をレスポンスで案内） | 必須 |
+| `delete_page` | ページごと削除。`COSENSE_ENABLE_DELETE=true`のときだけ登録される。`dryRun`対応 | 必須＋ゲート |
+| `rewrite_page` | ページ本文を全置換（タイトル行は保持）。`COSENSE_ENABLE_DELETE=true`のときだけ登録される。`dryRun`対応 | 必須＋ゲート |
 
 `create_page`、`insert_lines`、`replace_lines`はデフォルトでCosense記法。記法ルール（リンク、見出し、インデント、KaTeX数式等）の本体は`get_notation_guide`ツールのレスポンスで返し、各tool descriptionには「書き込み前に`get_notation_guide`を呼ぶこと」という指示と最小限のコア記法だけを置いている。
 
 この構成にしているのは、Claude.aiがtools/list（ツール名・description）をプラットフォーム側でキャッシュし、コネクタを削除→再追加しないと再取得されないため。ガイド本文をランタイムレスポンスに置くことで、記法ルールの改善がサーバー再起動だけで即反映される。
+
+### CLI
+
+全ツールはCLIサブコマンドとしても使える。
+
+```bash
+scrapbox-cosense-mcp get <title>
+scrapbox-cosense-mcp search <query>
+scrapbox-cosense-mcp create <title> --body=TEXT
+scrapbox-cosense-mcp insert <title> --after=TEXT --text=TEXT
+scrapbox-cosense-mcp replace <title> --target=TEXT --newtext=TEXT
+scrapbox-cosense-mcp delete-lines <title> --target=TEXT
+scrapbox-cosense-mcp delete-page <title> [--dry-run]
+scrapbox-cosense-mcp rewrite <title> --body=TEXT [--dry-run]
+```
+
+`--compact`（トークン節約）、`--json`、`--project=NAME` が共通で使える。詳細は `<command> --help`。
+
+`delete` という名前は**受け付けない**。フォーク元では`delete`＝ページ削除、このフォークでは`delete`＝行削除を指していた。`delete_page`を取り込んだ結果、同じ名前が両方に存在して意味が逆になるため、曖昧さを説明して終了するだけのコマンドにしてある。どちらの癖で打っても、黙って違うことが起きない。
 
 ### 記法カスタマイズ
 
@@ -104,12 +132,22 @@ COSENSE_NOTATION_PAGE=cosense-mcp記法ルール
 ### Claude.ai（Custom Connector + Docker）
 
 ```bash
-git clone https://github.com/ojimpo/scrapbox-cosense-mcp.git
-cd scrapbox-cosense-mcp
+git clone https://github.com/ojimpo/cosense-mcp.git
+cd cosense-mcp
 cp .env.example .env
-# .env を編集: COSENSE_PROJECT_NAME, COSENSE_SID を設定
 docker compose up -d
 ```
+
+`.env` に最低限これだけ要る。
+
+```bash
+COSENSE_PROJECT_NAME=your-project
+COSENSE_SID=s%3A...                          # 非公開PJと書き込みに必要
+MCP_PUBLIC_URL=https://mcp.yourdomain.com    # 公開オリジン
+MCP_OAUTH_PASSPHRASE=<12文字以上>             # 同意画面のパスフレーズ
+```
+
+`MCP_PUBLIC_URL` と `MCP_OAUTH_PASSPHRASE` が揃うとOAuthが有効になる。**認証が1つも設定されていないと起動を拒否する**（意図的に開けたい場合のみ `MCP_ALLOW_UNAUTHENTICATED=true`）。
 
 サーバーは `http://0.0.0.0:3000/mcp` で待ち受ける（PORTは.envで変更可能）。
 
@@ -124,9 +162,14 @@ cloudflared tunnel route dns cosense-mcp mcp.yourdomain.com
 ```
 
 Claude.aiでの接続:
-1. Settings → Connectors → +
+1. Settings → Connectors → カスタムコネクタを追加
 2. 名前: `Cosense`、URL: `https://mcp.yourdomain.com/mcp`
-3. 追加
+3. OAuth Client ID / シークレットは**空のまま**（動的クライアント登録に対応しているので、クライアントが自分で登録する）
+4. 追加 → 接続 → ブラウザで同意画面が開くので `MCP_OAUTH_PASSPHRASE` を入力
+
+URLは`/mcp`まで含めること。ここがリソース識別子と一致していないと再認可ループに入る。
+
+ChatGPTからも同じURLで繋がる（Developer modeのカスタムコネクタ）。ChatGPTはOAuth 2.1しか受け付けないので、認証なしでは接続できない。
 
 ### Claude Desktop / Claude Code（stdio）
 
