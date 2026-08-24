@@ -17,8 +17,11 @@ worldnine/scrapbox-cosense-mcp のフォーク。Claude.ai Custom Connector対�
 
 - Docker (port 4100) → Cloudflare Tunnel → `cosense-mcp.ojimpo.com`
 - CF Tunnel設定: `/etc/cloudflared/config.yml`（sudo必要）
-- **認証: OAuth 2.1（実装済み・未デプロイ）。** `MCP_PUBLIC_URL` と `MCP_OAUTH_PASSPHRASE` を
-  `.env` に入れて再ビルドするまで、稼働中のコンテナは旧イメージのまま無認証で動いている
+- **認証: OAuth 2.1（2026-08-24 デプロイ済み）。** 匿名の `/mcp` は 401。
+  パスフレーズは `.env` の `MCP_OAUTH_PASSPHRASE`
+- クライアント登録とトークンは named volume `oauth-data` の `/data/oauth-store.json`。
+  **`docker compose down -v` を打つと全クライアントの再認可が必要になる**ので、`-v` は付けない
+- ロールバック用: イメージ `cosense-mcp-cosense-mcp:rollback-20260824`、`.env.bak.20260824`
 
 ## 認証（OAuth 2.1）
 
