@@ -22,6 +22,9 @@ worldnine/scrapbox-cosense-mcp のフォーク。Claude.ai Custom Connector対�
 - クライアント登録とトークンは named volume `oauth-data` の `/data/oauth-store.json`。
   **`docker compose down -v` を打つと全クライアントの再認可が必要になる**ので、`-v` は付けない
 - ロールバック用: イメージ `cosense-mcp-cosense-mcp:rollback-20260824`、`.env.bak.20260824`
+- **`COSENSE_ENABLE_DELETE=true`（2026-08-24 有効化）。** `delete_page` / `rewrite_page` が
+  `tools/list` に出ている（13ツール）。無効に戻すなら `.env` の行を消して再起動し、
+  **Claude.ai 側でコネクタを削除→再追加**する（`tools/list` が変わるため）
 
 ## 認証（OAuth 2.1）
 
