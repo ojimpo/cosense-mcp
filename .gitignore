@@ -24,3 +24,5 @@ coverage/
 
 # Desktop Extensions ビルド成果物
 *.mcpb
+# 上流に出す前の下書き（投稿したら消す。リポジトリには入れない）
+upstream-drafts/
