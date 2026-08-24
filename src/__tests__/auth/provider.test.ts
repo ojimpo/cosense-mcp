@@ -246,6 +246,39 @@ describe('CosenseOAuthProvider', () => {
     await expect(provider.verifyAccessToken('foreign-token')).rejects.toThrow(/not issued for this resource server/);
   });
 
+  it('リフレッシュトークンを取り消すと、同じ認可のアクセストークンも失効する', async () => {
+    // RFC 7009 2.1 の SHOULD。片方だけ残ると「取り消したのに使い続けられる」
+    const { provider } = build();
+    const pendingId = await startAuthorization(provider);
+    const code = new URL(provider.approve(pendingId, PASSPHRASE, 'ip')).searchParams.get('code')!;
+    const tokens = await provider.exchangeAuthorizationCode(client, code);
+
+    await provider.revokeToken(client, { token: tokens.refresh_token! });
+    await expect(provider.verifyAccessToken(tokens.access_token)).rejects.toThrow();
+  });
+
+  it('アクセストークンを取り消すと、同じ認可のリフレッシュトークンも失効する', async () => {
+    const { provider } = build();
+    const pendingId = await startAuthorization(provider);
+    const code = new URL(provider.approve(pendingId, PASSPHRASE, 'ip')).searchParams.get('code')!;
+    const tokens = await provider.exchangeAuthorizationCode(client, code);
+
+    await provider.revokeToken(client, { token: tokens.access_token });
+    await expect(provider.exchangeRefreshToken(client, tokens.refresh_token!)).rejects.toThrow(/Invalid or expired/);
+  });
+
+  it('ローテーション後も同じ認可として取り消せる', async () => {
+    // grantId を引き継がないと、古い世代が取り残されて失効しない
+    const { provider } = build();
+    const pendingId = await startAuthorization(provider);
+    const code = new URL(provider.approve(pendingId, PASSPHRASE, 'ip')).searchParams.get('code')!;
+    const first = await provider.exchangeAuthorizationCode(client, code);
+    const second = await provider.exchangeRefreshToken(client, first.refresh_token!);
+
+    await provider.revokeToken(client, { token: second.refresh_token! });
+    await expect(provider.verifyAccessToken(second.access_token)).rejects.toThrow();
+  });
+
   it('取り消したトークンは検証に通らない', async () => {
     const { provider } = build();
     const pendingId = await startAuthorization(provider);

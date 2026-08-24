@@ -19,6 +19,13 @@ export interface GrantRecord {
   expiresAt: number;
   /** RFC 8707 の audience。トークン検証時にサーバーの resource と突き合わせる。 */
   resource?: string;
+  /**
+   * 同じ認可から発行されたトークン同士を結ぶID。
+   * RFC 7009 は「リフレッシュトークンを取り消したら、同じ認可から出たアクセストークンも
+   * 無効にすべき」としている。個々のトークン値だけでは辿れないのでIDで束ねる。
+   * 古いストアには無いので optional。
+   */
+  grantId?: string;
 }
 
 interface StoreData {
@@ -186,6 +193,30 @@ export class OAuthStore {
     delete this.data.refreshTokens[key];
     this.schedulePersist();
     return true;
+  }
+
+  /**
+   * 同じ認可から発行されたトークンをまとめて失効させる。
+   * grantId を持たない古いレコードには何もしない（呼び出し側が個別に消す）。
+   */
+  revokeGrant(grantId: string): number {
+    let removed = 0;
+    for (const bucket of [this.data.accessTokens, this.data.refreshTokens]) {
+      for (const [key, record] of Object.entries(bucket)) {
+        if (record.grantId === grantId) {
+          delete bucket[key];
+          removed += 1;
+        }
+      }
+    }
+    if (removed > 0) this.schedulePersist();
+    return removed;
+  }
+
+  /** トークン値から、それが属する認可を引く（失効の起点を決めるため）。 */
+  findGrantId(token: string): string | undefined {
+    const key = hashToken(token);
+    return this.data.accessTokens[key]?.grantId ?? this.data.refreshTokens[key]?.grantId;
   }
 
   /** クライアントに紐づくトークンをすべて失効させる。 */

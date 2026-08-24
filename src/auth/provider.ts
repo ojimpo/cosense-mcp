@@ -335,10 +335,18 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
       granted = scopes;
     }
 
-    return this.issueTokens(client.client_id, granted, requested ?? record.resource);
+    // ローテーションしても同じ認可の続きなので、grantId は引き継ぐ。
+    // ここで新しいIDにすると、取り消し時に古い世代が取り残される。
+    return this.issueTokens(client.client_id, granted, requested ?? record.resource, record.grantId);
   }
 
-  private issueTokens(clientId: string, scopes: string[], resource: string | undefined): OAuthTokens {
+  private issueTokens(
+    clientId: string,
+    scopes: string[],
+    resource: string | undefined,
+    /** リフレッシュで再発行する場合は、元の認可のIDを引き継ぐ。 */
+    grantId: string = randomUUID()
+  ): OAuthTokens {
     const accessToken = generateToken();
     const refreshToken = generateToken();
     const issuedAt = nowSec();
@@ -348,12 +356,14 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
       scopes,
       expiresAt: issuedAt + this.config.accessTokenTtlSec,
       ...(resource !== undefined ? { resource } : {}),
+      grantId,
     });
     this.store.saveRefreshToken(refreshToken, {
       clientId,
       scopes,
       expiresAt: issuedAt + this.config.refreshTokenTtlSec,
       ...(resource !== undefined ? { resource } : {}),
+      grantId,
     });
 
     return {
@@ -398,6 +408,15 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
   }
 
   async revokeToken(_client: OAuthClientInformationFull, request: OAuthTokenRevocationRequest): Promise<void> {
+    // RFC 7009 2.1: リフレッシュトークンを取り消したら、同じ認可から出たアクセストークンも
+    // 無効にする SHOULD。逆向き（アクセス→リフレッシュ）は MAY だが、片方だけ残ると
+    // 「取り消したのに使い続けられる」ので同じ扱いにする。
+    const grantId = this.store.findGrantId(request.token);
+    if (grantId !== undefined) {
+      this.store.revokeGrant(grantId);
+      return;
+    }
+    // grantId を持たない古いレコード向けのフォールバック。
     // RFC 7009: 不明なトークンでもエラーにしない。
     this.store.deleteAccessToken(request.token);
     this.store.deleteRefreshToken(request.token);

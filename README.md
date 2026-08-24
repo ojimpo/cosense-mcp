@@ -161,7 +161,7 @@ claude mcp add cosense \
 | `MCP_OAUTH_REFRESH_TTL` | `2592000` | リフレッシュトークンの有効期間（秒） |
 | `MCP_OAUTH_RESOURCE_NAME` | `Cosense MCP` | 同意画面とメタデータに出す名前 |
 | `MCP_TRUST_PROXY` | — | リバースプロキシ配下で接続元IPを復元（Expressの`trust proxy`に渡す値） |
-| `MCP_ALLOWED_ORIGINS` | — | `/mcp`のCORS許可オリジン（カンマ区切り）。未指定なら全許可 |
+| `MCP_ALLOWED_ORIGINS` | — | `/mcp`のCORS許可オリジンと`Origin`ヘッダ検証の許可リスト（カンマ区切り）。**未指定だとreportモード**（ログに残すだけで拒否しない） |
 | `MCP_AUTH_TOKEN` | — | 固定Bearerトークン。ローカル用のフォールバック |
 | `MCP_ALLOW_UNAUTHENTICATED` | `false` | 認証なしでHTTPを開くことを明示的に許可する |
 
@@ -193,6 +193,7 @@ Claude.ai側は固定ヘッダ（`static_headers`）がbetaで提供されてい
 | Dynamic Client Registration (RFC 7591) | `/register`。リダイレクトURIはhttps（loopbackのみhttp可）に限定 |
 | 401 + `WWW-Authenticate` | `resource_metadata`付きで返し、クライアントに再認可先を教える |
 | audience検証 (RFC 8707) | 認可時・トークン交換時・トークン検証時の3箇所で`resource`を突き合わせる |
+| `Origin`検証 | ブラウザ以外は`Origin`を送らないので、**付いているときだけ**判定する。既定はreportモード |
 | `iss`パラメータ | 認可レスポンスに必ず付ける。ChatGPTはこれを見て固定のリダイレクトURIに切り替える |
 
 ### なぜ認可サーバーを自前で持つか

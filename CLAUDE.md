@@ -72,6 +72,16 @@ curlプローブとJestの結合テストは壊れたフローを全部素通り
 `Mcp-Session-Id` header (other than initialization) with HTTP 400 Bad Request"）。
 クライアントは`initialize`にフォールバックする。ログの文言だけ、事故に見えないようにしてある。
 
+**`Origin` 検証は既定で report モード。** 仕様は検証をMUSTと書いているが、**既定を enforce にすると
+未知のクライアントが `Origin` を送ってきた瞬間に本番が落ちる**。`MCP_ALLOWED_ORIGINS` を明示したときだけ
+拒否に切り替わる。実トラフィックのログ（`[origin] would block ...`）を見てから締めること。
+ブラウザ以外は `Origin` を送らないので、**ヘッダが無いリクエストは常に通す**（ここで弾くと
+Claude.ai / ChatGPT のサーバー間呼び出しが全滅する）。
+
+**トークンの失効は認可単位。** アクセスとリフレッシュは同じ `grantId` で束ねてあり、
+どちらを取り消しても対で消える（RFC 7009 2.1）。リフレッシュのローテーション時も `grantId` を
+引き継ぐ — ここで新しいIDを振ると、古い世代が取り残されて失効しない。
+
 リソース識別子は `<MCP_PUBLIC_URL の origin>/mcp`。**利用者が入力するURLと完全一致していないと
 再認可ループに入る**ので、`MCP_PUBLIC_URL` を変えるときはクライアント側の登録も揃えること。
 
@@ -210,6 +220,7 @@ See README.md. Key variables:
 - `MCP_PUBLIC_URL` + `MCP_OAUTH_PASSPHRASE` — Enable OAuth. Both required; setting only one throws
 - `MCP_OAUTH_STORE` — Where clients/tokens persist. Unset means a restart forces re-authorization
 - `MCP_ALLOW_UNAUTHENTICATED` — Explicitly allow starting the HTTP transport with no auth
+- `MCP_ALLOWED_ORIGINS` — CORS allowlist and `Origin` validation list. Unset = report-only mode
 
 ## CI/CD & Release
 

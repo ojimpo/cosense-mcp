@@ -8,6 +8,7 @@ import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { resolveOAuthConfig, type OAuthConfig } from './auth/config.js';
 import { setupOAuth } from './auth/index.js';
+import { OriginValidator } from './auth/origin.js';
 
 type ServerFactory = () => Server;
 
@@ -67,6 +68,29 @@ export function createApp(createServer: ServerFactory, options: HttpServerOption
 
   const corsOptions = buildCorsOptions(allowedOrigins);
 
+  // MCP 仕様は Origin の検証を MUST としている（DNSリバインディング対策）。
+  // 既定は report モード — 実トラフィックに何が来ているか分かる前に締めると、
+  // 未知のクライアントが Origin を送ってきた瞬間に本番が落ちる。
+  const originValidator = new OriginValidator(allowedOrigins, oauth?.issuerUrl.origin);
+  const checkOrigin: RequestHandler = (req, res, next) => {
+    const verdict = originValidator.check(req.headers.origin);
+    if (verdict.reason) {
+      console.error(
+        `[origin] ${verdict.allowed ? 'would block' : 'blocked'} ${req.method} ${req.path}: ${verdict.reason}`
+      );
+    }
+    if (!verdict.allowed) {
+      res.status(403).json({
+        jsonrpc: '2.0',
+        error: { code: -32001, message: 'Forbidden: Origin not allowed' },
+        id: null,
+      });
+      return;
+    }
+    next();
+  };
+  console.error(`[origin] validation policy: ${originValidator.policy}`);
+
   // OAuth のルーターはアプリのルートに載せる必要がある（`.well-known` を含むため）。
   // また、同意画面には CORS ヘッダを付けない。
   let requireAuth: RequestHandler | undefined;
@@ -100,7 +124,7 @@ export function createApp(createServer: ServerFactory, options: HttpServerOption
 
   const transports: Record<string, StreamableHTTPServerTransport> = {};
 
-  const mcpMiddleware: RequestHandler[] = [cors(corsOptions), express.json()];
+  const mcpMiddleware: RequestHandler[] = [cors(corsOptions), checkOrigin, express.json()];
   if (requireAuth) mcpMiddleware.push(requireAuth);
 
   // POST /mcp - main MCP endpoint
