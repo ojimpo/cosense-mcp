@@ -15,6 +15,8 @@ services:
       - MCP_OAUTH_STORE=/data/oauth-store.json
       - MCP_TRUST_PROXY=${MCP_TRUST_PROXY:-1}
       - MCP_ALLOW_UNAUTHENTICATED=${MCP_ALLOW_UNAUTHENTICATED:-false}
+      # 設定するとOrigin検証がenforceになる（未設定はreport＝ログのみ）
+      - MCP_ALLOWED_ORIGINS=${MCP_ALLOWED_ORIGINS:-}
       # 破壊的ツール（delete_page / rewrite_page）。未設定なら tools/list にも出ない
       - COSENSE_ENABLE_DELETE=${COSENSE_ENABLE_DELETE:-}
       - COSENSE_NOTATION_CONFIG=/app/notation.config.json
