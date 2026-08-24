@@ -468,10 +468,24 @@ const transport = process.env.TRANSPORT;
 
 if (transport === 'http') {
   const { startHttpServer } = await import('./http-server.js');
+  const { resolveOAuthConfig } = await import('./auth/config.js');
   const port = parseInt(process.env.PORT || '3000', 10);
   const authToken = process.env.MCP_AUTH_TOKEN;
+  const oauth = resolveOAuthConfig();
+  const trustProxy = process.env.MCP_TRUST_PROXY;
+  const allowedOrigins = process.env.MCP_ALLOWED_ORIGINS
+    ?.split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
 
-  startHttpServer(createServer, { port, ...(authToken ? { authToken } : {}) });
+  startHttpServer(createServer, {
+    port,
+    ...(authToken ? { authToken } : {}),
+    ...(oauth ? { oauth } : {}),
+    allowUnauthenticated: process.env.MCP_ALLOW_UNAUTHENTICATED === 'true',
+    ...(trustProxy ? { trustProxy: /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy } : {}),
+    ...(allowedOrigins && allowedOrigins.length > 0 ? { allowedOrigins } : {}),
+  });
 } else {
   // デフォルト: stdio transport
   const server = createServer();
