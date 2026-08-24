@@ -47,6 +47,8 @@ interface PendingAuthorization {
   scopes: string[];
   resource?: string;
   expiresAt: number;
+  /** 発行済みの認可コード。再送信されたときに同じものを返すために覚えておく。 */
+  issuedCode?: string;
 }
 
 interface AuthorizationCode {
@@ -155,7 +157,14 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
 
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'");
+    // form-action はフォーム送信「の結果のリダイレクト先」にも適用される。'self' だけだと
+    // 承認後の 302 をブラウザがブロックし、押しても何も起きないように見える（curl は CSP を
+    // 解釈しないので、この壊れ方はブラウザでしか再現しない）。
+    const redirectOrigin = new URL(params.redirectUri).origin;
+    res.setHeader(
+      'Content-Security-Policy',
+      `default-src 'none'; style-src 'unsafe-inline'; form-action 'self' ${redirectOrigin}`
+    );
     res.status(200).type('html').send(
       this.renderConsent({
         pendingId: pending.id,
@@ -196,17 +205,23 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
       throw new ConsentError('Incorrect passphrase.');
     }
     this.loginLimiter.reset(rateLimitKey);
-    this.pending.delete(pendingId);
 
-    const code = generateToken();
-    this.codes.set(code, {
-      clientId: pending.clientId,
-      redirectUri: pending.redirectUri,
-      codeChallenge: pending.codeChallenge,
-      scopes: pending.scopes,
-      ...(pending.resource !== undefined ? { resource: pending.resource } : {}),
-      expiresAt: nowSec() + AUTHORIZATION_CODE_TTL_SEC,
-    });
+    // 同じ承認を二重に送っても行き止まりにしない。ブラウザの再送信や、リダイレクトが
+    // 見えなかった利用者の押し直しで「期限切れ」を出すのは、こちらの都合でしかない。
+    // pending は TTL で消えるまで残し、認可コードも使い回す（コードの単発性は
+    // トークンエンドポイント側で担保されている）。
+    const code = pending.issuedCode ?? generateToken();
+    if (pending.issuedCode === undefined) {
+      pending.issuedCode = code;
+      this.codes.set(code, {
+        clientId: pending.clientId,
+        redirectUri: pending.redirectUri,
+        codeChallenge: pending.codeChallenge,
+        scopes: pending.scopes,
+        ...(pending.resource !== undefined ? { resource: pending.resource } : {}),
+        expiresAt: nowSec() + AUTHORIZATION_CODE_TTL_SEC,
+      });
+    }
 
     const redirect = new URL(pending.redirectUri);
     redirect.searchParams.set('code', code);

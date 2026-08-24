@@ -91,6 +91,38 @@ describe('CosenseOAuthProvider', () => {
     expect(JSON.parse(response.body()).clientName).toBe('Claude');
   });
 
+  it('CSPのform-actionにリダイレクト先のオリジンを含める', async () => {
+    const { provider } = build();
+    const response = fakeResponse();
+    await provider.authorize(
+      client,
+      { redirectUri: client.redirect_uris[0]!, codeChallenge: 'c', scopes: [] },
+      response.res
+    );
+    // これが無いと承認後の302をブラウザがブロックし、押しても無反応に見える
+    expect(response.headers['Content-Security-Policy']).toContain("form-action 'self' https://claude.ai");
+  });
+
+  it('同じpendingを再送信しても同じリダイレクトを返す（行き止まりにしない）', async () => {
+    const { provider } = build();
+    const pendingId = await startAuthorization(provider, { state: 'dup' });
+    const first = provider.approve(pendingId, PASSPHRASE, 'ip');
+    const second = provider.approve(pendingId, PASSPHRASE, 'ip');
+    expect(second).toBe(first);
+
+    // 使い回されたコードでも、トークン交換は1回しか通らない
+    const code = new URL(first).searchParams.get('code')!;
+    await provider.exchangeAuthorizationCode(client, code);
+    await expect(provider.exchangeAuthorizationCode(client, code)).rejects.toThrow(/Invalid or expired/);
+  });
+
+  it('再送信でもパスフレーズは毎回検証する', async () => {
+    const { provider } = build();
+    const pendingId = await startAuthorization(provider);
+    provider.approve(pendingId, PASSPHRASE, 'ip');
+    expect(() => provider.approve(pendingId, 'wrong-passphrase', 'ip2')).toThrow(ConsentError);
+  });
+
   it('別リソース宛の認可リクエストを拒否する', async () => {
     const { provider } = build();
     await expect(
