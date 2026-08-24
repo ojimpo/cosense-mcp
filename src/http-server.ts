@@ -58,6 +58,13 @@ export function createApp(createServer: ServerFactory, options: HttpServerOption
     );
   }
 
+  // Request logging。OAuth のルーターより先に載せること — 後ろに置くと
+  // /authorize や /oauth/consent がログに一切残らず、認可の失敗を追えなくなる。
+  app.use((req: Request, _res: Response, next) => {
+    console.error(`[${new Date().toISOString()}] ${req.method} ${req.path} session=${req.headers['mcp-session-id'] || 'none'}`);
+    next();
+  });
+
   const corsOptions = buildCorsOptions(allowedOrigins);
 
   // OAuth のルーターはアプリのルートに載せる必要がある（`.well-known` を含むため）。
@@ -85,12 +92,6 @@ export function createApp(createServer: ServerFactory, options: HttpServerOption
   } else {
     console.error('[auth] WARNING: no authentication configured; this endpoint is open to anyone who knows the URL');
   }
-
-  // Request logging
-  app.use((req: Request, _res: Response, next) => {
-    console.error(`[${new Date().toISOString()}] ${req.method} ${req.path} session=${req.headers['mcp-session-id'] || 'none'}`);
-    next();
-  });
 
   // Health check
   app.get('/health', cors(corsOptions), (_req: Request, res: Response) => {

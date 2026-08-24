@@ -31,6 +31,9 @@ const STYLE = `
   button { flex: 1; padding: 0.65rem; font-size: 1rem; border-radius: 6px; cursor: pointer;
            border: 1px solid color-mix(in srgb, CanvasText 30%, transparent); }
   button[value="approve"] { background: #2563eb; color: #fff; border-color: #2563eb; }
+  /* DOM順はApprove→Denyだが、表示は打ち消し操作を左に置く慣習に合わせる。
+     DOM順を戻すと、パスフレーズ欄でEnterを押したときにDenyが送信される。 */
+  button[value="deny"] { order: -1; }
   .error { padding: 0.6rem 0.8rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.9rem;
            background: color-mix(in srgb, #dc2626 15%, transparent); color: #dc2626; }
   footer { margin-top: 1.5rem; font-size: 0.8rem; opacity: 0.6; }
@@ -81,8 +84,9 @@ ${errorBlock}
   <label for="passphrase">Passphrase</label>
   <input id="passphrase" name="passphrase" type="password" autocomplete="current-password" required autofocus>
   <div class="actions">
-    <button type="submit" name="action" value="deny">Deny</button>
     <button type="submit" name="action" value="approve">Approve</button>
+    <!-- 拒否にパスフレーズは要らないので required の検証を飛ばす -->
+    <button type="submit" name="action" value="deny" formnovalidate>Deny</button>
   </div>
 </form>
 <footer>This grant lets the application read and write pages in your Cosense project.</footer>
@@ -92,5 +96,11 @@ ${errorBlock}
 
 /** リダイレクト先が確定できない状況（期限切れ等）で見せる行き止まりのページ。 */
 export function renderErrorPage(message: string): string {
-  return layout('Authorization failed', `<h1>Authorization failed</h1><p class="error">${escapeHtml(message)}</p>`);
+  return layout(
+    'Authorization failed',
+    `<h1>Authorization failed</h1>
+<p class="error">${escapeHtml(message)}</p>
+<footer>Reopening this page will not help — the request is gone from the server.
+Go back to the client (in Claude.ai: Settings → Connectors → Connect) and start the connection again.</footer>`
+  );
 }

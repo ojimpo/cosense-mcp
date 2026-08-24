@@ -86,18 +86,23 @@ function createConsentHandler(provider: CosenseOAuthProvider): RequestHandler {
 
     try {
       if (body.action === 'deny') {
+        console.error(`[oauth] consent denied (pending=${pendingId.slice(0, 8)})`);
         res.redirect(302, provider.deny(pendingId));
         return;
       }
       // ネットワーク的な同一性しか手掛かりがないので、レート制限のキーは接続元 IP。
-      res.redirect(302, provider.approve(pendingId, passphrase, req.ip ?? 'unknown'));
+      const redirectTo = provider.approve(pendingId, passphrase, req.ip ?? 'unknown');
+      console.error(`[oauth] consent approved (pending=${pendingId.slice(0, 8)})`);
+      res.redirect(302, redirectTo);
     } catch (error) {
       if (error instanceof ConsentError) {
+        console.error(`[oauth] consent rejected (pending=${pendingId.slice(0, 8)}): ${error.message}`);
         // リダイレクト先は分かっているが、まだ承認されていない。画面を出し直す。
         res.status(401).type('html').send(provider.renderConsentFor(pendingId, error.message));
         return;
       }
       if (error instanceof PendingNotFoundError) {
+        console.error(`[oauth] consent for unknown/expired pending=${pendingId.slice(0, 8) || '(empty)'}`);
         res.status(400).type('html').send(renderErrorPage(error.message));
         return;
       }

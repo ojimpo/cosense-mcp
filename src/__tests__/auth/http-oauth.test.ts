@@ -212,6 +212,73 @@ describe('HTTP transport + OAuth', () => {
     expect(await denied.text()).toContain('Incorrect passphrase');
   });
 
+  it('actionが付かない送信（Enterによる暗黙送信）は承認として扱う', async () => {
+    const registration = await fetch(`${base}/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_name: 'Implicit Submit', redirect_uris: [REDIRECT_URI], token_endpoint_auth_method: 'none' }),
+    });
+    const client = await registration.json();
+    const authorizeUrl = new URL(`${base}/authorize`);
+    authorizeUrl.search = new URLSearchParams({
+      client_id: client.client_id,
+      redirect_uri: REDIRECT_URI,
+      response_type: 'code',
+      code_challenge: pkce().challenge,
+      code_challenge_method: 'S256',
+    }).toString();
+    const html = await (await fetch(authorizeUrl)).text();
+    const pendingId = /name="pending_id" value="([^"]+)"/.exec(html)![1]!;
+
+    // ボタンのname/valueを送らないブラウザがあるため、action無しでも拒否側に倒さない
+    const response = await fetch(`${base}/oauth/consent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      redirect: 'manual',
+      body: new URLSearchParams({ pending_id: pendingId, passphrase: PASSPHRASE }),
+    });
+    expect(response.status).toBe(302);
+    expect(new URL(response.headers.get('location')!).searchParams.get('code')).toBeTruthy();
+  });
+
+  it('拒否したあとに再送信すると期限切れ扱いになる', async () => {
+    const registration = await fetch(`${base}/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_name: 'Deny Then Retry', redirect_uris: [REDIRECT_URI], token_endpoint_auth_method: 'none' }),
+    });
+    const client = await registration.json();
+    const authorizeUrl = new URL(`${base}/authorize`);
+    authorizeUrl.search = new URLSearchParams({
+      client_id: client.client_id,
+      redirect_uri: REDIRECT_URI,
+      response_type: 'code',
+      code_challenge: pkce().challenge,
+      code_challenge_method: 'S256',
+    }).toString();
+    const html = await (await fetch(authorizeUrl)).text();
+    const pendingId = /name="pending_id" value="([^"]+)"/.exec(html)![1]!;
+
+    const denied = await fetch(`${base}/oauth/consent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      redirect: 'manual',
+      body: new URLSearchParams({ pending_id: pendingId, passphrase: '', action: 'deny' }),
+    });
+    expect(denied.status).toBe(302);
+    expect(new URL(denied.headers.get('location')!).searchParams.get('error')).toBe('access_denied');
+
+    // 戻るボタンで戻って再送信したときに出る画面（2026-08-24に本番で遭遇したもの）
+    const retry = await fetch(`${base}/oauth/consent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      redirect: 'manual',
+      body: new URLSearchParams({ pending_id: pendingId, passphrase: PASSPHRASE, action: 'approve' }),
+    });
+    expect(retry.status).toBe(400);
+    expect(await retry.text()).toContain('has expired');
+  });
+
   it('リフレッシュトークンで再発行できる', async () => {
     const { clientId, refreshToken } = await obtainToken();
     const response = await fetch(`${base}/token`, {
