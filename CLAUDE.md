@@ -92,7 +92,7 @@ git fetch upstream
 git merge upstream/main
 ```
 
-現在の取り込み済み地点: upstream v0.10.0。
+現在の取り込み済み地点: upstream v0.10.1。
 
 ### 意図的に取り込んでいない upstream のツール
 
@@ -201,7 +201,8 @@ See README.md. Key variables:
 
 ### Release Process
 
-1. Create `release/vX.Y.Z` branch, bump version in `package.json` + `manifest.json`
+1. Create `release/vX.Y.Z` branch, bump version in `package.json` + `manifest.json` + `.claude-plugin/plugin.json`
+   - Note: the MCP `serverInfo.version` is read from `package.json` at runtime, so no separate bump is needed for `src/index.ts`
 2. Create PR → CI passes → merge
 3. Everything after merge is automatic (tag → npm → GitHub Release → .mcpb)
 

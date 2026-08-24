@@ -13,10 +13,17 @@ const TOOL_SUFFIX = process.env.COSENSE_TOOL_SUFFIX;
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
+  ListPromptsRequestSchema,
+  ListResourceTemplatesRequestSchema,
   ListResourcesRequestSchema,
   ListToolsRequestSchema,
   ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import { createRequire } from "node:module";
+
+// package.json を唯一のバージョン情報源にする（リリース時のズレ防止）
+const require = createRequire(import.meta.url);
+const { version } = require("../package.json") as { version: string };
 import { listPages, getPage, toReadablePage } from "./cosense.js";
 import { formatYmd } from './utils/format.js';
 import { setupRoutes } from './routes/index.js';
@@ -108,7 +115,7 @@ function createServer(): Server {
   const server = new Server(
     {
       name: "scrapbox-cosense-mcp",
-      version: "0.7.3",
+      version,
       icons: [
         { src: "https://scrapbox.io/favicon.ico", mimeType: "image/x-icon", sizes: ["32x32"] },
       ],
@@ -168,6 +175,17 @@ function createServer(): Server {
         },
       ],
     };
+  });
+
+  // この SDK は capabilities で宣言したメソッドしかハンドラ登録できないため、
+  // prompts / resource templates は宣言とセットで空の list ハンドラを用意する。
+  // 未登録のままだと Claude.ai の probe が -32601 Method not found を受ける。
+  server.setRequestHandler(ListPromptsRequestSchema, async () => {
+    return { prompts: [] };
+  });
+
+  server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => {
+    return { resourceTemplates: [] };
   });
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
