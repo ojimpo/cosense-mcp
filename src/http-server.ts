@@ -142,7 +142,11 @@ export function createApp(createServer: ServerFactory, options: HttpServerOption
         });
         return;
       } else {
-        console.error(`[${new Date().toISOString()}] POST /mcp rejected: no session ID and not initialize`);
+        // 仕様どおりの応答。「セッションIDを要求するサーバーは、initialize 以外の
+        // セッション無しリクエストに 400 を返す SHOULD」(MCP Streamable HTTP)。
+        // Claude.ai は initialize の前に server/discover を投げてくるので、ここは
+        // 定常的に通る。事故ではないので警告に見える文言にしない。
+        console.error(`[${new Date().toISOString()}] POST /mcp 400 (no session, method=${req.body?.method}) — expected for pre-initialize probes`);
         res.status(400).json({
           jsonrpc: '2.0',
           error: { code: -32000, message: 'Bad Request: No valid session ID provided' },

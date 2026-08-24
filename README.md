@@ -174,6 +174,7 @@ claude mcp add cosense \
 | `COSENSE_EXCLUDE_PINNED` | `false` | ピン留めページを除外 |
 | `COSENSE_NOTATION_CONFIG` | — | 記法カスタマイズ用JSONファイルのパス |
 | `COSENSE_LINT` | `warn` | 書き込み前の記法リント。`warn`＝書き込んだうえで警告、`strict`＝書き込まずエラー、`off`＝無効 |
+| `COSENSE_ENABLE_DELETE` | — | `true`で`delete_page` / `rewrite_page`を有効化。未設定なら`tools/list`にも出ない |
 
 ## 認証（OAuth 2.1）
 

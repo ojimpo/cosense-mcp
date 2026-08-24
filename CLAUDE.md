@@ -63,8 +63,11 @@ curlプローブとJestの結合テストは壊れたフローを全部素通り
 `/oauth/consent` が一切ログに残らず、認可の失敗を追う手段が無くなる。上の2つはログを出して初めて
 「1回目の承認は成功していた」と分かった。
 
-`Claude.ai` は `initialize` の前に `server/discover` を投げてくる。セッション無しなので400を返すが、
-クライアントは `initialize` にフォールバックするので実害は無い。
+`Claude.ai` は `initialize` の前に `server/discover`（公開仕様に無い独自メソッド）をセッション無しで
+投げてくる。**400を返すのが仕様どおり**なので直す対象ではない
+（MCP Streamable HTTP: "Servers that require a session ID SHOULD respond to requests without an
+`Mcp-Session-Id` header (other than initialization) with HTTP 400 Bad Request"）。
+クライアントは`initialize`にフォールバックする。ログの文言だけ、事故に見えないようにしてある。
 
 リソース識別子は `<MCP_PUBLIC_URL の origin>/mcp`。**利用者が入力するURLと完全一致していないと
 再認可ループに入る**ので、`MCP_PUBLIC_URL` を変えるときはクライアント側の登録も揃えること。
@@ -101,10 +104,23 @@ git merge upstream/main
 | upstream | 判断 | 理由 |
 |---|---|---|
 | `edit_lines` | 取り込まない | フォークの`replace_lines`が上位互換。`occurrence`指定＋曖昧時エラー（upstreamは黙って先頭1件、または`matchAll`で全件）、記法リント配線済み、formatデフォルトが`scrapbox` |
-| `delete_page` | 現状は取り込まない | 破壊的なコードパスを公開エンドポイントに置かない判断。**根拠だった「無認証で公開している」という前提はOAuth実装で消えた**ので、OAuthを本番に入れた後は再検討してよい。判断軸は「認証があるか」＋「同意画面のパスフレーズ1つが唯一の防壁である以上、取り返しのつかない操作をどこまで許すか」 |
-| `rewrite_page` | 同上 | ページ全書き換え。判断軸は`delete_page`と同じ |
 
-upstream由来で取り込んだもの: `delete_lines`のタイトル行削除ガード（フォークの実装に移植）。
+upstream由来で取り込んだもの:
+
+- `delete_lines`のタイトル行削除ガード（フォークの実装に移植）
+- `delete_page` / `rewrite_page`（2026-08-24 に取り込み。経緯は下記）
+
+### `delete_page` / `rewrite_page` を取り込んだ経緯
+
+**取り込まなかった理由は「破壊的だから」ではなく「無認証で公開していたから」だった。**
+OAuthを入れて前提が消えたので取り込んだ。同じ問いが再燃したときのために、いまの判断軸を書いておく:
+
+- `COSENSE_ENABLE_DELETE=true` のときだけ有効。**未設定なら`tools/list`にも出さない**
+  （ツール登録側と実行時の両方でゲートしている）。呼べる形で置いておかないのが一番効く
+- フォーク側の調整: `rewrite_page`の`format`デフォルトは`scrapbox`（upstreamは`markdown`。
+  既定でMarkdown変換に落ちるとCosense記法で書いた本文が黙って壊れる）。記法リントも配線済み
+- CLIサブコマンドは`delete-page` / `rewrite`（フォークの`delete`は`delete_lines`のため）
+- **本番で有効にするならコネクタの再追加が必要**（`tools/list`が変わるため）
 
 CLIサブコマンド名もフォーク側を維持している（`replace` / `delete`）。upstreamは`edit` / `delete-lines` / `delete`(=delete_page)。
 
@@ -120,7 +136,7 @@ npm run inspector    # Debug with MCP Inspector
 
 ## Architecture
 
-### Tools (11)
+### Tools (13)
 
 | Tool | Description | Auth |
 |---|---|---|
@@ -135,10 +151,12 @@ npm run inspector    # Debug with MCP Inspector
 | `get_smart_context` | Get page + linked pages (1-hop/2-hop) in AI-optimized format | SID |
 | `get_notation_guide` | Return the full Cosense notation guide (call before writing content) | - |
 | `rename_page` | Rename a page by rewriting its title line. Backlinks are NOT auto-updated (response lists candidates) | SID |
+| `delete_page` | Delete a whole page. Gated by `COSENSE_ENABLE_DELETE`; supports `dryRun` | SID + gate |
+| `rewrite_page` | Replace a page's entire content (title preserved). Gated by `COSENSE_ENABLE_DELETE`; supports `dryRun` | SID + gate |
 
 ### CLI
 
-All tools are also available as CLI subcommands (`get`, `list`, `search`, `create`, `url`, `insert`, `replace`, `delete`, `context`, `guide`, `rename`). Run `scrapbox-cosense-mcp <command> --help` for usage. Key flags:
+All tools are also available as CLI subcommands (`get`, `list`, `search`, `create`, `url`, `insert`, `replace`, `delete`, `context`, `guide`, `rename`, `delete-page`, `rewrite`). Run `scrapbox-cosense-mcp <command> --help` for usage. Key flags:
 
 - `--compact` — Token-efficient output (85% smaller for list)
 - `--json` — JSON output
@@ -185,6 +203,7 @@ See README.md. Key variables:
 - `COSENSE_NOTATION_CONFIG` — Path to notation config JSON (heading levels, math, linking, custom rules)
 - `COSENSE_NOTATION_PAGE` — Cosense page title holding user-editable custom rules; appended to the `get_notation_guide` response as highest-priority rules (fetched per call, no restart needed)
 - `COSENSE_LINT` — Pre-write notation lint: `warn` (default — writes, then warns), `strict` (rejects the write), `off`
+- `COSENSE_ENABLE_DELETE` — Exposes `delete_page` / `rewrite_page`. Unset means they are not registered at all
 - `MCP_PUBLIC_URL` + `MCP_OAUTH_PASSPHRASE` — Enable OAuth. Both required; setting only one throws
 - `MCP_OAUTH_STORE` — Where clients/tokens persist. Unset means a restart forces re-authorization
 - `MCP_ALLOW_UNAUTHENTICATED` — Explicitly allow starting the HTTP transport with no auth
