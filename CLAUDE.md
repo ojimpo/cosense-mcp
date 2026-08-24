@@ -23,8 +23,8 @@ worldnine/scrapbox-cosense-mcp のフォーク。Claude.ai Custom Connector対�
   **`docker compose down -v` を打つと全クライアントの再認可が必要になる**ので、`-v` は付けない
 - ロールバック用: イメージ `cosense-mcp-cosense-mcp:rollback-20260824`、`.env.bak.20260824`
 - **`COSENSE_ENABLE_DELETE=true`（2026-08-24 有効化）。** `delete_page` / `rewrite_page` が
-  `tools/list` に出ている（13ツール）。無効に戻すなら `.env` の行を消して再起動し、
-  **Claude.ai 側でコネクタを削除→再追加**する（`tools/list` が変わるため）
+  `tools/list` に出ている（13ツール）。Claude.ai 側は `Delete page` を「都度確認」に自動分類した。
+  無効に戻すなら `.env` の行を消して再起動すればよい（コネクタの再追加は不要）
 
 ## 認証（OAuth 2.1）
 
@@ -72,6 +72,9 @@ curlプローブとJestの結合テストは壊れたフローを全部素通り
 `Mcp-Session-Id` header (other than initialization) with HTTP 400 Bad Request"）。
 クライアントは`initialize`にフォールバックする。ログの文言だけ、事故に見えないようにしてある。
 
+**Claude.ai は `Origin` ヘッダを送らない**（2026-08-24 に本番ログで実測。実リクエストに
+`[origin]` の行が1つも出ない）。ブラウザではなくサーバー間で呼んでいるため。
+
 **`Origin` 検証は既定で report モード。** 仕様は検証をMUSTと書いているが、**既定を enforce にすると
 未知のクライアントが `Origin` を送ってきた瞬間に本番が落ちる**。`MCP_ALLOWED_ORIGINS` を明示したときだけ
 拒否に切り替わる。実トラフィックのログ（`[origin] would block ...`）を見てから締めること。
@@ -97,7 +100,10 @@ npm run build
 docker compose down && docker compose build && docker compose up -d
 ```
 
-tool description（ツール名・スキーマ含む）を変更した場合、Claude.ai側でコネクタを削除→再追加するとtools/listが再取得される。
+tool description（ツール名・スキーマ含む）を変更した場合、**Claude.ai は設定画面でコネクタを開いた時点で
+`tools/list` を取り直す**。削除→再追加までは要らない（2026-08-24、`COSENSE_ENABLE_DELETE` で
+ツールが11→13に増えたとき、再認可も再追加もせずに反映されたのを実測）。
+反映されないときの最終手段として削除→再追加が使える。
 ただしハンドラー側ロジック変更（formatデフォルト、`get_notation_guide`が返す記法ガイド本文等）はサーバー再起動のみで反映。
 記法ガイドを育てる変更は`buildNotationGuide`（`src/utils/notation-config.ts`）側に入れること — descriptionを触ると再登録が必要になる。
 
