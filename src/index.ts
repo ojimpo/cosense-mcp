@@ -27,6 +27,7 @@ const { version } = require("../package.json") as { version: string };
 import { listPages, getPage, toReadablePage } from "./cosense.js";
 import { formatYmd } from './utils/format.js';
 import { setupRoutes } from './routes/index.js';
+import { isDeleteEnabled } from './routes/handlers/delete-page.js';
 
 // 環境変数のデフォルト値と検証用の定数
 const FETCH_PAGE_LIMIT = 100;  // 固定で100件取得
@@ -438,6 +439,62 @@ function createServer(): Server {
             required: ["pageTitle", "newTitle"],
           },
         },
+        // delete_page / rewrite_page は COSENSE_ENABLE_DELETE=true のときだけ登録する。
+        // ページ全体を壊せる操作なので、既定では tools/list にも出さない
+        // （公開しているエンドポイントでは「呼べる形で置いておかない」のが一番効く）。
+        ...(isDeleteEnabled() ? [{
+          name: getToolName("delete_page"),
+          description: `Delete a page in Scrapbox project on ${SERVICE_LABEL}. Empties every line of the target page via the WebSocket patch API; Cosense automatically removes a page once all of its lines are empty. There is no undo — pass dryRun to preview what would be removed first. Errors if the page does not exist. Requires COSENSE_SID. Uses ${projectName} project as default if projectName is not specified.`,
+          inputSchema: {
+            type: "object",
+            properties: {
+              pageTitle: {
+                type: "string",
+                description: "Title of the page to delete",
+              },
+              projectName: {
+                type: "string",
+                description: `Target project name. If not specified, defaults to '${projectName}'.`,
+              },
+              dryRun: {
+                type: "boolean",
+                description: "If true, report the number of lines and the first few lines that would be removed without deleting anything. Defaults to false.",
+              },
+            },
+            required: ["pageTitle"],
+          },
+        }, {
+          name: getToolName("rewrite_page"),
+          description: `Replace the entire content of a Scrapbox page on ${SERVICE_LABEL} with new content (the page title is preserved as the first line). This is a destructive, whole-page operation with no undo. Prefer insert_lines / replace_lines for targeted edits. Errors if the page does not exist, and rejects empty content (use delete_page to remove a page). Pass dryRun to preview before/after without changing anything. Requires COSENSE_SID. Uses ${projectName} project as default if projectName is not specified.`,
+          inputSchema: {
+            type: "object",
+            properties: {
+              pageTitle: {
+                type: "string",
+                description: "Title of the page to rewrite",
+              },
+              body: {
+                type: "string",
+                description: bodyDescription,
+              },
+              projectName: {
+                type: "string",
+                description: `Target project name. If not specified, defaults to '${projectName}'.`,
+              },
+              format: {
+                type: "string",
+                enum: ["scrapbox", "markdown"],
+                default: "scrapbox",
+                description: "Content format. 'scrapbox' (default, STRONGLY recommended) writes native Cosense syntax as-is. Always use 'scrapbox'.",
+              },
+              dryRun: {
+                type: "boolean",
+                description: "If true, report the current and new line counts and previews without changing anything. Defaults to false.",
+              },
+            },
+            required: ["pageTitle", "body"],
+          },
+        }] : []),
         {
           name: getToolName("delete_lines"),
           description: `Delete a specific line from a Scrapbox page on ${SERVICE_LABEL}. The target line must match exactly and uniquely (single match only). Use get_page first to see current page content. Uses ${projectName} project as default if projectName is not specified.`,

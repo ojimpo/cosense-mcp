@@ -10,8 +10,10 @@ import { handleDeleteLines } from './routes/handlers/delete-lines.js';
 import { handleGetSmartContext } from './routes/handlers/get-smart-context.js';
 import { handleGetNotationGuide } from './routes/handlers/get-notation-guide.js';
 import { handleRenamePage } from './routes/handlers/rename-page.js';
+import { handleDeletePage } from './routes/handlers/delete-page.js';
+import { handleRewritePage } from './routes/handlers/rewrite-page.js';
 
-const CLI_COMMANDS = ['get', 'list', 'search', 'create', 'url', 'insert', 'replace', 'delete', 'context', 'guide', 'rename'] as const;
+const CLI_COMMANDS = ['get', 'list', 'search', 'create', 'url', 'insert', 'replace', 'delete', 'context', 'guide', 'rename', 'delete-page', 'rewrite'] as const;
 type CliCommand = typeof CLI_COMMANDS[number];
 
 interface ParsedArgs {
@@ -193,6 +195,38 @@ Options:
 
 ${COMMON_OPTIONS}`,
 
+  'delete-page': `Usage: scrapbox-cosense-mcp delete-page <title> [options]
+
+Delete an entire page. Empties every line; Cosense removes a page once all of
+its lines are empty. There is no undo.
+
+Requires COSENSE_ENABLE_DELETE=true and COSENSE_SID.
+
+Arguments:
+  <title>                        Title of the page to delete
+
+Options:
+  --dry-run                      Report what would be removed without deleting
+
+${COMMON_OPTIONS}`,
+
+  rewrite: `Usage: scrapbox-cosense-mcp rewrite <title> --body=TEXT [options]
+
+Replace a page's entire content. The title line is preserved. Destructive and
+not undoable — prefer insert/replace for targeted edits.
+
+Requires COSENSE_ENABLE_DELETE=true and COSENSE_SID.
+
+Arguments:
+  <title>                        Title of the page to rewrite
+
+Options:
+  --body=TEXT                    New content (required, must not be empty)
+  --format=scrapbox|markdown     Content format (default: scrapbox)
+  --dry-run                      Show before/after without writing
+
+${COMMON_OPTIONS}`,
+
   guide: `Usage: scrapbox-cosense-mcp guide [options]
 
 Show the Cosense/Scrapbox notation guide (headings, links, code blocks, etc.).
@@ -225,6 +259,8 @@ Commands:
   delete <title>                 Delete a line from a page
   context <title>                Get smart context (related pages)
   rename <title>                 Rename a page
+  delete-page <title>            Delete an entire page (needs COSENSE_ENABLE_DELETE)
+  rewrite <title>                Replace a page's whole content (needs COSENSE_ENABLE_DELETE)
   guide                          Show the Cosense notation guide
 
 ${COMMON_OPTIONS}
@@ -507,6 +543,45 @@ export async function runCli(argv: string[]): Promise<void> {
       const project = (typeof flags['project'] === 'string' ? flags['project'] : undefined)
         || process.env.COSENSE_PROJECT_NAME;
       result = await handleGetNotationGuide(project, sid);
+      break;
+    }
+
+    case 'delete-page': {
+      const pageTitle = positional[0];
+      if (!pageTitle) {
+        process.stderr.write('Error: Page title is required. Usage: scrapbox-cosense-mcp delete-page <title> [--dry-run]\n');
+        process.exit(2);
+      }
+      const project = requireProjectName(flags);
+      result = await handleDeletePage(project, sid, {
+        pageTitle,
+        projectName: typeof flags['project'] === 'string' ? flags['project'] : undefined,
+        dryRun: flags['dry-run'] === true,
+        compact,
+      });
+      break;
+    }
+
+    case 'rewrite': {
+      const pageTitle = positional[0];
+      if (!pageTitle) {
+        process.stderr.write('Error: Page title is required. Usage: scrapbox-cosense-mcp rewrite <title> --body=TEXT [--dry-run]\n');
+        process.exit(2);
+      }
+      const body = typeof flags['body'] === 'string' ? unescapeString(flags['body']) : undefined;
+      if (body === undefined) {
+        process.stderr.write('Error: --body=TEXT is required. Usage: scrapbox-cosense-mcp rewrite <title> --body=TEXT [--dry-run]\n');
+        process.exit(2);
+      }
+      const project = requireProjectName(flags);
+      result = await handleRewritePage(project, sid, {
+        pageTitle,
+        body,
+        projectName: typeof flags['project'] === 'string' ? flags['project'] : undefined,
+        format: flags['format'] === 'markdown' ? 'markdown' : 'scrapbox',
+        dryRun: flags['dry-run'] === true,
+        compact,
+      });
       break;
     }
 

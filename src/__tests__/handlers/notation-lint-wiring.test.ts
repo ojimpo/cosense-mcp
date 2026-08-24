@@ -1,6 +1,7 @@
 import { handleInsertLines } from '@/routes/handlers/insert-lines.js';
 import { handleReplaceLines } from '@/routes/handlers/replace-lines.js';
 import { handleCreatePage } from '@/routes/handlers/create-page.js';
+import { handleRewritePage } from '@/routes/handlers/rewrite-page.js';
 
 jest.mock('@/utils/markdown-converter.js', () => ({
   convertMarkdownToScrapbox: jest.fn((text) => Promise.resolve(text)),
@@ -40,18 +41,33 @@ function mockPatchOk() {
   });
 }
 
+/** rewrite_page は既存ページ相手にしか動かないので、getPage を差し替える。 */
+async function mockExistingPage() {
+  const cosense = await import('@/cosense.js');
+  (cosense.getPage as jest.Mock).mockResolvedValue({
+    title: 'Test Page',
+    persistent: true,
+    lines: [{ text: 'Test Page' }, { text: 'old line' }],
+  });
+}
+
 describe('pre-write notation lint wiring', () => {
   const originalMode = process.env.COSENSE_LINT;
+  const originalDelete = process.env.COSENSE_ENABLE_DELETE;
 
   beforeEach(() => {
     jest.clearAllMocks();
     delete process.env.COSENSE_LINT;
+    // rewrite_page はゲートの内側にあるので、リントの配線を見るために開けておく
+    process.env.COSENSE_ENABLE_DELETE = 'true';
     mockPatchOk();
   });
 
   afterAll(() => {
     if (originalMode === undefined) delete process.env.COSENSE_LINT;
     else process.env.COSENSE_LINT = originalMode;
+    if (originalDelete === undefined) delete process.env.COSENSE_ENABLE_DELETE;
+    else process.env.COSENSE_ENABLE_DELETE = originalDelete;
   });
 
   describe('default (warn) mode', () => {
@@ -82,6 +98,17 @@ describe('pre-write notation lint wiring', () => {
     it('create_page still writes, but reports the warning', async () => {
       const result = await handleCreatePage(PROJECT, SID, {
         title: 'New Page',
+        body: BROKEN,
+      });
+
+      expect(mockedPatch).toHaveBeenCalled();
+      expect(result.content?.[0]?.text).toContain('decoration-inline-code');
+    });
+
+    it('rewrite_page still writes, but reports the warning', async () => {
+      await mockExistingPage();
+      const result = await handleRewritePage(PROJECT, SID, {
+        pageTitle: 'Test Page',
         body: BROKEN,
       });
 
@@ -125,6 +152,17 @@ describe('pre-write notation lint wiring', () => {
 
       expect(result.isError).toBe(true);
       expect(result.content?.[0]?.text).toContain('nothing was written');
+      expect(mockedPatch).not.toHaveBeenCalled();
+    });
+
+    it('rejects a rewrite and does not call patch', async () => {
+      await mockExistingPage();
+      const result = await handleRewritePage(PROJECT, SID, {
+        pageTitle: 'Test Page',
+        body: BROKEN,
+      });
+
+      expect(result.isError).toBe(true);
       expect(mockedPatch).not.toHaveBeenCalled();
     });
 

@@ -11,6 +11,8 @@ import { handleDeleteLines } from './handlers/delete-lines.js';
 import { handleGetSmartContext } from './handlers/get-smart-context.js';
 import { handleGetNotationGuide } from './handlers/get-notation-guide.js';
 import { handleRenamePage } from './handlers/rename-page.js';
+import { handleDeletePage } from './handlers/delete-page.js';
+import { handleRewritePage } from './handlers/rewrite-page.js';
 
 // ツール名正規化ヘルパー
 function normalizeToolName(toolName: string, toolSuffix?: string): string {
@@ -130,6 +132,30 @@ export function setupRoutes(
               ? Number(request.params.arguments.occurrence)
               : undefined,
             projectName: request.params.arguments?.projectName as string | undefined,
+          }
+        );
+
+      case "delete_page":
+        return handleDeletePage(
+          projectName,
+          cosenseSid,
+          {
+            pageTitle: String(request.params.arguments?.pageTitle),
+            projectName: request.params.arguments?.projectName as string | undefined,
+            dryRun: request.params.arguments?.dryRun === true,
+          }
+        );
+
+      case "rewrite_page":
+        return handleRewritePage(
+          projectName,
+          cosenseSid,
+          {
+            pageTitle: String(request.params.arguments?.pageTitle),
+            body: String(request.params.arguments?.body ?? ''),
+            projectName: request.params.arguments?.projectName as string | undefined,
+            format: (request.params.arguments?.format as "markdown" | "scrapbox" | undefined) ?? undefined,
+            dryRun: request.params.arguments?.dryRun === true,
           }
         );
 
