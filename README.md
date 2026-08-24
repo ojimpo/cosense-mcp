@@ -23,7 +23,7 @@ MCP化すればこれらが構造的に解決する。tool callの折りたた�
 |----------|------|
 | **HTTP transport** | Express + `StreamableHTTPServerTransport`。`TRANSPORT=http`で起動 |
 | **セッション管理** | 不明セッションに404を返してクライアントの再接続を誘導 |
-| **Bearer token認証** | `MCP_AUTH_TOKEN`でオプショナルな認証 |
+| **OAuth 2.1認証** | Claude.aiとChatGPTの両方が受け付ける唯一の方式。認可サーバーを同梱（DCR・PKCE S256・audience検証） |
 | **Cosense記法デフォルト化** | `format`のデフォルトを`scrapbox`に変更。tool descriptionにCosense記法ガイドを埋め込み |
 | **Docker / CF Tunnel** | Dockerfile、docker-compose.yml、Cloudflare Tunnel経由での公開手順 |
 
@@ -154,7 +154,16 @@ claude mcp add cosense \
 |------|-----------|------|
 | `TRANSPORT` | `stdio` | `stdio`（Claude Desktop）か `http`（Claude.ai） |
 | `PORT` | `3000` | HTTPポート（`TRANSPORT=http`時のみ） |
-| `MCP_AUTH_TOKEN` | — | Bearer token認証（任意） |
+| `MCP_PUBLIC_URL` | — | 公開オリジン。これと`MCP_OAUTH_PASSPHRASE`の両方でOAuthが有効になる |
+| `MCP_OAUTH_PASSPHRASE` | — | 同意画面のパスフレーズ（12文字以上） |
+| `MCP_OAUTH_STORE` | — | クライアント登録・トークンの永続化先。未指定だと再起動で再認可が必要 |
+| `MCP_OAUTH_ACCESS_TTL` | `3600` | アクセストークンの有効期間（秒） |
+| `MCP_OAUTH_REFRESH_TTL` | `2592000` | リフレッシュトークンの有効期間（秒） |
+| `MCP_OAUTH_RESOURCE_NAME` | `Cosense MCP` | 同意画面とメタデータに出す名前 |
+| `MCP_TRUST_PROXY` | — | リバースプロキシ配下で接続元IPを復元（Expressの`trust proxy`に渡す値） |
+| `MCP_ALLOWED_ORIGINS` | — | `/mcp`のCORS許可オリジン（カンマ区切り）。未指定なら全許可 |
+| `MCP_AUTH_TOKEN` | — | 固定Bearerトークン。ローカル用のフォールバック |
+| `MCP_ALLOW_UNAUTHENTICATED` | `false` | 認証なしでHTTPを開くことを明示的に許可する |
 
 ### その他
 
@@ -165,6 +174,49 @@ claude mcp add cosense \
 | `COSENSE_EXCLUDE_PINNED` | `false` | ピン留めページを除外 |
 | `COSENSE_NOTATION_CONFIG` | — | 記法カスタマイズ用JSONファイルのパス |
 | `COSENSE_LINT` | `warn` | 書き込み前の記法リント。`warn`＝書き込んだうえで警告、`strict`＝書き込まずエラー、`off`＝無効 |
+
+## 認証（OAuth 2.1）
+
+リモートに公開するなら**OAuth以外の選択肢が無い**。ChatGPTのMCPコネクタは
+[OAuth 2.1しか受け付けず](https://developers.openai.com/apps-sdk/build/auth)、APIキーもカスタムヘッダもサポートしない。
+Claude.ai側は固定ヘッダ（`static_headers`）がbetaで提供されているが、
+[`oauth_dcr`と`oauth_cimd`は標準サポート](https://claude.com/docs/connectors/building/authentication)。
+つまり**両方のクライアントから使いたいなら OAuth 一本**になる。
+
+幸い両者の要求はほぼ一致しているので、1回実装すれば両方に刺さる。
+
+| 要求 | 実装 |
+|------|------|
+| RFC 9728 Protected Resource Metadata | `/.well-known/oauth-protected-resource/mcp`（パス無しの別名も用意） |
+| PKCE S256必須 | SDKの`tokenHandler`が検証。メタデータで`code_challenge_methods_supported`を広告 |
+| Dynamic Client Registration (RFC 7591) | `/register`。リダイレクトURIはhttps（loopbackのみhttp可）に限定 |
+| 401 + `WWW-Authenticate` | `resource_metadata`付きで返し、クライアントに再認可先を教える |
+| audience検証 (RFC 8707) | 認可時・トークン交換時・トークン検証時の3箇所で`resource`を突き合わせる |
+| `iss`パラメータ | 認可レスポンスに必ず付ける。ChatGPTはこれを見て固定のリダイレクトURIに切り替える |
+
+### なぜ認可サーバーを自前で持つか
+
+外部IdPに委譲する選択肢（SDKの`ProxyOAuthServerProvider`）もあるが、
+**DCRを素で受け付ける外部IdPが少ない**。委譲するとIdP側の設定作業と依存が増えるだけで、
+利用者が1人のこのサーバーでは見返りが無い。認可サーバーをMCPサーバーと同じプロセスに同居させ、
+利用者の認証はパスフレーズ1つで済ませている。
+
+```
+MCP_PUBLIC_URL=https://cosense-mcp.example.com
+MCP_OAUTH_PASSPHRASE=<12文字以上>
+MCP_OAUTH_STORE=/data/oauth-store.json
+```
+
+`MCP_PUBLIC_URL`から導かれるリソース識別子は`<origin>/mcp`。
+**クライアントに入力するURLと1文字でも違うと再認可ループに入る**ので、ここは正確に。
+
+### 認証なしで起動しない
+
+`TRANSPORT=http`で認証が1つも設定されていない場合、サーバーは起動を拒否する。
+このリポジトリの本番デプロイは、`MCP_AUTH_TOKEN`が`.env`でコメントアウトされていたために
+**認証ミドルウェアごとmountされず、URLを知っていれば誰でも非公開プロジェクトを読み書きできる状態**で
+動いていた。設定が「書いてあるのに効いていない」形で失敗したので、同じ失敗が黙って通らないようにしてある。
+意図的に開けたい場合だけ`MCP_ALLOW_UNAUTHENTICATED=true`を明示する。
 
 ## 書き込み前の記法リント
 

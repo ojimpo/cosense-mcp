@@ -5,6 +5,7 @@ worldnine/scrapbox-cosense-mcp のフォーク。Claude.ai Custom Connector対�
 ## このフォークの追加分
 
 - `src/http-server.ts` — Express + StreamableHTTPServerTransport（HTTP transportの本体）
+- `src/auth/` — OAuth 2.1 認可サーバー兼リソースサーバー（Claude.ai / ChatGPT 両対応の唯一の認証手段）
 - `src/index.ts` — `TRANSPORT=http` でHTTPモード、デフォルトはstdio（フォーク元互換）
 - `Dockerfile` — node:22-slim マルチステージビルド
 - `docker-compose.yml` — `.env`で環境変数管理、ポート4100で稼働中
@@ -15,8 +16,35 @@ worldnine/scrapbox-cosense-mcp のフォーク。Claude.ai Custom Connector対�
 ## デプロイ状況
 
 - Docker (port 4100) → Cloudflare Tunnel → `cosense-mcp.ojimpo.com`
-- Claude.ai Custom Connectorで接続中（認証なし）
 - CF Tunnel設定: `/etc/cloudflared/config.yml`（sudo必要）
+- **認証: OAuth 2.1（実装済み・未デプロイ）。** `MCP_PUBLIC_URL` と `MCP_OAUTH_PASSPHRASE` を
+  `.env` に入れて再ビルドするまで、稼働中のコンテナは旧イメージのまま無認証で動いている
+
+## 認証（OAuth 2.1）
+
+**リモート公開でOAuth以外の選択肢は無い。** ChatGPTのMCPコネクタはOAuth 2.1しか受け付けず、
+APIキーもカスタムヘッダもサポートしない（`https://developers.openai.com/apps-sdk/build/auth`）。
+Claude.aiの`static_headers`はbeta。両方から使う前提なら OAuth 一本になる。
+
+実装は`src/auth/`。SDK 1.29.0 の `mcpAuthRouter` に載せているが、**SDKだけでは足りない部分がある**:
+
+- **audience（RFC 8707 `resource`）をSDKは一切検証しない。** `AuthInfo.resource` を設定しても
+  `requireBearerAuth` は見ていない。他リソース向けに発行されたトークンの持ち込みを防ぐのは
+  `CosenseOAuthProvider.verifyAccessToken` の責任。消すと仕様のMUST違反になる
+- **`createOAuthMetadata` は `authorization_response_iss_parameter_supported` を出さない。**
+  これが無いと ChatGPT はコールバックごとに異なるリダイレクトURIを使う。
+  `src/auth/index.ts` で拡張済みメタデータを `mcpAuthRouter` より先にmountして上書きしている。
+  順番を入れ替えるとSDK側の素のメタデータが勝つので注意
+- **RFC 9728 のメタデータをSDKはパス付きURLにしか置かない。** パス無しを見に来るクライアントのため
+  `/.well-known/oauth-protected-resource` にも同じ内容を置いている
+
+リソース識別子は `<MCP_PUBLIC_URL の origin>/mcp`。**利用者が入力するURLと完全一致していないと
+再認可ループに入る**ので、`MCP_PUBLIC_URL` を変えるときはクライアント側の登録も揃えること。
+
+`TRANSPORT=http` で認証が1つも設定されていないと**起動を拒否する**（`MCP_ALLOW_UNAUTHENTICATED=true`
+で明示的にオプトアウト可）。旧実装は `if (authToken)` の内側で認証ミドルウェアをmountしていたため、
+`.env` の `MCP_AUTH_TOKEN` がコメントアウトされているだけで**認証ごと消える**という失敗の仕方をした。
+2026-08-24 時点の本番はその状態で、URLを知っていれば誰でも非公開プロジェクトを読み書きできた。
 
 ## 変更時の手順
 
@@ -45,8 +73,8 @@ git merge upstream/main
 | upstream | 判断 | 理由 |
 |---|---|---|
 | `edit_lines` | 取り込まない | フォークの`replace_lines`が上位互換。`occurrence`指定＋曖昧時エラー（upstreamは黙って先頭1件、または`matchAll`で全件）、記法リント配線済み、formatデフォルトが`scrapbox` |
-| `delete_page` | 取り込まない | `cosense-mcp.ojimpo.com`は認証なしのCustom Connectorで公開している。`COSENSE_ENABLE_DELETE`でデフォルトoffとはいえ、ページ全消しのコードパスを公開エンドポイントに置かない |
-| `rewrite_page` | 取り込まない | 同上（ページ全書き換え） |
+| `delete_page` | 現状は取り込まない | 破壊的なコードパスを公開エンドポイントに置かない判断。**根拠だった「無認証で公開している」という前提はOAuth実装で消えた**ので、OAuthを本番に入れた後は再検討してよい。判断軸は「認証があるか」＋「同意画面のパスフレーズ1つが唯一の防壁である以上、取り返しのつかない操作をどこまで許すか」 |
+| `rewrite_page` | 同上 | ページ全書き換え。判断軸は`delete_page`と同じ |
 
 upstream由来で取り込んだもの: `delete_lines`のタイトル行削除ガード（フォークの実装に移植）。
 
@@ -104,6 +132,7 @@ All tools are also available as CLI subcommands (`get`, `list`, `search`, `creat
 - `src/utils/sort.ts` — Sorting with pinned page filtering
 - `src/utils/markdown-converter.ts` — Markdown → Scrapbox conversion (uses `md2sb`)
 - `src/utils/notation-lint.ts` — Pre-write lint for notation that the API accepts but Cosense renders wrong
+- `src/auth/` — OAuth 2.1 (`config.ts` env resolution, `store.ts` persistence, `provider.ts` flow, `index.ts` Express wiring)
 - `src/types/` — API response and MCP request/response type definitions
 - `src/cli.ts` — CLI entry point (args → CLI mode, no args → MCP server)
 - `src/index.ts` — Server entry point
@@ -128,6 +157,9 @@ See README.md. Key variables:
 - `COSENSE_NOTATION_CONFIG` — Path to notation config JSON (heading levels, math, linking, custom rules)
 - `COSENSE_NOTATION_PAGE` — Cosense page title holding user-editable custom rules; appended to the `get_notation_guide` response as highest-priority rules (fetched per call, no restart needed)
 - `COSENSE_LINT` — Pre-write notation lint: `warn` (default — writes, then warns), `strict` (rejects the write), `off`
+- `MCP_PUBLIC_URL` + `MCP_OAUTH_PASSPHRASE` — Enable OAuth. Both required; setting only one throws
+- `MCP_OAUTH_STORE` — Where clients/tokens persist. Unset means a restart forces re-authorization
+- `MCP_ALLOW_UNAUTHENTICATED` — Explicitly allow starting the HTTP transport with no auth
 
 ## CI/CD & Release
 
