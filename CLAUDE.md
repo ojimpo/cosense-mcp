@@ -9,6 +9,8 @@ worldnine/scrapbox-cosense-mcp のフォーク。Claude.ai Custom Connector対�
 - `src/index.ts` — `TRANSPORT=http` でHTTPモード、デフォルトはstdio（フォーク元互換）
 - `Dockerfile` — node:22-slim マルチステージビルド
 - `docker-compose.yml` — `.env`で環境変数管理、ポート4100で稼働中
+  - **compose に書いていない環境変数は`.env`に足しても届かない。** `COSENSE_PROJECT_ALLOW_LIST`は
+    2026-08-25 まで`environment:`に無く、設定しても無視される状態だった
 - デフォルトformatを`scrapbox`に変更（`create-page.ts`、`insert-lines.ts`）
 - Cosense記法ガイドは`get_notation_guide`ツールのレスポンスで提供（descriptionには最小限のコア記法＋「先にget_notation_guideを呼ぶ」指示のみ）
 - 不明セッションに404を返してクライアントの再接続を誘導
@@ -216,6 +218,13 @@ All tools are also available as CLI subcommands (`get`, `list`, `search`, `creat
   because that is where the override arrives; copying it into all 13 handlers would mean the next
   tool someone adds silently skips it. Trade-off: calling a handler directly bypasses the check
 
+- **The allowlist doubles as the project *menu*, not just a fence.** A client only ever sees
+  `COSENSE_PROJECT_NAME` in the tool descriptions, so a second project stays unreachable in
+  practice even when nothing blocks it. `projectNameDescription` in `src/index.ts` appends the
+  allowed names to all 12 `projectName` schemas. Adding a project therefore means editing `.env`,
+  not code — but it does change `tools/list`, so Claude.ai has to refetch (opening the connector
+  settings screen is enough)
+
 - **WebSocket API (`@cosense/std`)** is used for `create_page` / `insert_lines` because the REST API has no page creation/editing endpoints
 - **`create_page` rejects existing pages** (`persistent === true`). Without this check, `patch()` silently replaces all content since it's a diff-update API
 - **`insert_lines` uses exact match**. Partial match risks inserting at unintended lines
@@ -235,7 +244,7 @@ See README.md. Key variables:
 - `COSENSE_NOTATION_PAGE` — Cosense page title holding user-editable custom rules; appended to the `get_notation_guide` response as highest-priority rules (fetched per call, no restart needed)
 - `COSENSE_LINT` — Pre-write notation lint: `warn` (default — writes, then warns), `strict` (rejects the write), `off`
 - `COSENSE_ENABLE_DELETE` — Exposes `delete_page` / `rewrite_page`. Unset means they are not registered at all
-- `COSENSE_PROJECT_ALLOW_LIST` — Comma-separated projects the tools may touch. Unset means unrestricted
+- `COSENSE_PROJECT_ALLOW_LIST` — Comma-separated projects the tools may touch. Unset means unrestricted. When set, the allowed names are listed in every tool's `projectName` description — that listing is the only way a client learns a non-default project exists
 - `MCP_PUBLIC_URL` + `MCP_OAUTH_PASSPHRASE` — Enable OAuth. Both required; setting only one throws
 - `MCP_OAUTH_STORE` — Where clients/tokens persist. Unset means a restart forces re-authorization
 - `MCP_ALLOW_UNAUTHENTICATED` — Explicitly allow starting the HTTP transport with no auth
