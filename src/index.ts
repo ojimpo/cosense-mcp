@@ -28,6 +28,7 @@ import { listPages, getPage, toReadablePage } from "./cosense.js";
 import { formatYmd } from './utils/format.js';
 import { setupRoutes } from './routes/index.js';
 import { isDeleteEnabled } from './routes/handlers/delete-page.js';
+import { getProjectAllowList } from './utils/project.js';
 
 // 環境変数のデフォルト値と検証用の定数
 const FETCH_PAGE_LIMIT = 100;  // 固定で100件取得
@@ -110,6 +111,18 @@ const notationPointer = "ALWAYS use format='scrapbox'. REQUIRED: call get_notati
 const bodyDescription = `Page content in Scrapbox/Cosense syntax. ${notationPointer} Do NOT duplicate the page title in the body (auto-displayed at top).`;
 const insertTextDescription = `${notationPointer} Can contain multiple lines separated by newline characters.`;
 const replaceTextDescription = `${notationPointer} Can contain multiple lines (replaces 1 line with multiple lines).`;
+
+// projectName の説明文。許可リストを設定しているなら、その中身をそのまま候補として見せる。
+// クライアントには既定プロジェクト以外の名前を知る手段が他に無く、書かなければ
+// COSENSE_PROJECT_ALLOW_LIST で許可したプロジェクトは事実上呼ばれないままになる。
+const projectNameDescription = (() => {
+  const base = `Target project name. If not specified, defaults to '${projectName}'.`;
+  const allowList = getProjectAllowList();
+  if (!allowList) return base;
+  // 既定プロジェクトは isProjectAllowed が暗黙に許可するので、列挙にも含める
+  const allowed = [...new Set([projectName, ...allowList].filter(Boolean))];
+  return `${base} This server may only touch these projects: ${allowed.join(', ')}.`;
+})();
 
 // サーバー生成ファクトリ（HTTP transportでセッションごとに新しいサーバーを作成するため関数化）
 function createServer(): Server {
@@ -216,7 +229,7 @@ function createServer(): Server {
               },
               projectName: {
                 type: "string",
-                description: `Target project name. If not specified, defaults to '${projectName}'.`,
+                description: projectNameDescription,
               },
               createActually: {
                 type: "boolean",
@@ -244,7 +257,7 @@ function createServer(): Server {
               },
               projectName: {
                 type: "string",
-                description: `Target project name. If not specified, defaults to '${projectName}'.`,
+                description: projectNameDescription,
               },
             },
             required: ["title"],
@@ -262,7 +275,7 @@ function createServer(): Server {
               },
               projectName: {
                 type: "string",
-                description: `Target project name. If not specified, defaults to '${projectName}'.`,
+                description: projectNameDescription,
               },
             },
             required: ["pageTitle"],
@@ -296,7 +309,7 @@ function createServer(): Server {
               },
               projectName: {
                 type: "string",
-                description: `Target project name. If not specified, defaults to '${projectName}'.`,
+                description: projectNameDescription,
               },
             },
             required: [],
@@ -314,7 +327,7 @@ function createServer(): Server {
               },
               projectName: {
                 type: "string",
-                description: `Target project name. If not specified, defaults to '${projectName}'.`,
+                description: projectNameDescription,
               },
             },
             required: ["query"],
@@ -337,7 +350,7 @@ function createServer(): Server {
               },
               projectName: {
                 type: "string",
-                description: `Target project name. If not specified, defaults to '${projectName}'.`,
+                description: projectNameDescription,
               },
             },
             required: ["title"],
@@ -368,7 +381,7 @@ function createServer(): Server {
               },
               projectName: {
                 type: "string",
-                description: `Target project name. If not specified, defaults to '${projectName}'.`,
+                description: projectNameDescription,
               },
               format: {
                 type: "string",
@@ -405,7 +418,7 @@ function createServer(): Server {
               },
               projectName: {
                 type: "string",
-                description: `Target project name. If not specified, defaults to '${projectName}'.`,
+                description: projectNameDescription,
               },
               format: {
                 type: "string",
@@ -433,7 +446,7 @@ function createServer(): Server {
               },
               projectName: {
                 type: "string",
-                description: `Target project name. If not specified, defaults to '${projectName}'.`,
+                description: projectNameDescription,
               },
             },
             required: ["pageTitle", "newTitle"],
@@ -454,7 +467,7 @@ function createServer(): Server {
               },
               projectName: {
                 type: "string",
-                description: `Target project name. If not specified, defaults to '${projectName}'.`,
+                description: projectNameDescription,
               },
               dryRun: {
                 type: "boolean",
@@ -479,7 +492,7 @@ function createServer(): Server {
               },
               projectName: {
                 type: "string",
-                description: `Target project name. If not specified, defaults to '${projectName}'.`,
+                description: projectNameDescription,
               },
               format: {
                 type: "string",
@@ -516,7 +529,7 @@ function createServer(): Server {
               },
               projectName: {
                 type: "string",
-                description: `Target project name. If not specified, defaults to '${projectName}'.`,
+                description: projectNameDescription,
               },
             },
             required: ["pageTitle", "targetLineText"],
