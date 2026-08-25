@@ -55,7 +55,7 @@ Claude.ai / ChatGPT → HTTPS → Cloudflare Tunnel → Docker Container
 | Tool | 説明 | 認証 |
 |------|------|:---:|
 | `get_page` | ページ内容・メタデータ・リンク取得 | 非公開PJのみ |
-| `list_pages` | ソート・ページネーション付き一覧（最大1000件） | 非公開PJのみ |
+| `list_pages` | ソート・ページネーション付き一覧（既定100件、最大1000件。既定ソートは`updated`） | 非公開PJのみ |
 | `search_pages` | 全文検索（最大100件） | 非公開PJのみ |
 | `create_page` | 新規ページ作成（WebSocket経由） | 必須 |
 | `insert_lines` | 指定行（複数行ブロック可）の後にテキスト挿入 | 必須 |
@@ -216,6 +216,7 @@ claude mcp add cosense \
 | `COSENSE_SORT_METHOD` | `updated` | ソート方法 |
 | `COSENSE_EXCLUDE_PINNED` | `false` | ピン留めページを除外 |
 | `COSENSE_NOTATION_CONFIG` | — | 記法カスタマイズ用JSONファイルのパス |
+| `COSENSE_REQUEST_TIMEOUT_MS` | `30000` | Cosense APIへのリクエストを打ち切るまでの時間（ミリ秒）。これが無いとAPI側が詰まったときtool callが返らず、クライアントからは「セッションがフリーズした」ようにしか見えない |
 | `COSENSE_LINT` | `warn` | 書き込み前の記法リント。`warn`＝書き込んだうえで警告、`strict`＝書き込まずエラー、`off`＝無効 |
 | `COSENSE_ENABLE_DELETE` | — | `true`で`delete_page` / `rewrite_page`を有効化。未設定なら`tools/list`にも出ない |
 | `COSENSE_PROJECT_ALLOW_LIST` | — | 操作を許可するプロジェクト名（カンマ区切り）。未設定なら無制限。`COSENSE_PROJECT_NAME`は暗黙に含まれる。設定すると各ツールの`projectName`の説明に許可済みプロジェクトが列挙され、クライアントが既定以外を指定できるようになる |

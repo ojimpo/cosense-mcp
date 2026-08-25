@@ -167,7 +167,7 @@ npm run inspector    # Debug with MCP Inspector
 | Tool | Description | Auth |
 |---|---|---|
 | `get_page` | Retrieve page content, metadata, and links | - |
-| `list_pages` | List pages with sorting and pagination (max 1000) | - |
+| `list_pages` | List pages with sorting and pagination (default 100, max 1000; default sort `updated`) | - |
 | `search_pages` | Keyword search (API limit: 100 results) | - |
 | `create_page` | Create new page. Rejects if page already exists | SID |
 | `get_page_url` | Generate URL from page title | - |
@@ -225,6 +225,31 @@ All tools are also available as CLI subcommands (`get`, `list`, `search`, `creat
   not code — but it does change `tools/list`, so Claude.ai has to refetch (opening the connector
   settings screen is enough)
 
+- **Every Cosense API call goes through `fetchWithTimeout` in `src/cosense.ts`.** There was no
+  timeout anywhere until 2026-08-25, so a stalled API meant the tool call never returned and the
+  MCP client just sat there — indistinguishable from a frozen session. Do not add a bare `fetch`;
+  the helper is the only place that owns the `AbortController`. Two details are load-bearing: the
+  ponyfill (`@whatwg-node/fetch`) normalizes aborts to `AbortError`, not `TimeoutError`, so the
+  timeout message is built by hand; and the timer is deliberately **not** cleared on success (only
+  `unref`'d) because `fetch` resolves at the response headers — clearing it would leave the body
+  read (`.json()` / `.text()`) unprotected. Timeouts throw `RequestTimeoutError`, and `getPage` /
+  `listPages` re-throw it instead of applying their usual "API error → `null` / empty result"
+  fallback. Adding the timeout without that carve-out just trades a hang for a silent lie: a
+  stalled API renders as `0 pages` or "page not found"
+
+- **Tool responses are sized for a context window, not for completeness.** `list_pages` defaulted
+  to `limit = 1000` from the first commit; on a 484-page project that is one 253KB tool result
+  (60k+ tokens). The default is now `DEFAULT_LIST_LIMIT` (100) in `src/routes/handlers/list-pages.ts`,
+  and `src/index.ts` imports that same constant for the schema `default` so the advertised number
+  cannot drift from the real one. Changing it changes `tools/list`
+
+- **Resolve `sort` to an explicit value at the handler, never pass `undefined` downstream.**
+  Three different notions of "default" used to disagree: `sortPages` fell through to *created*
+  order, the compact header printed `sort:updated`, and `getSortValue(page, undefined)` hit its
+  `default` branch and rendered every date as `Not specified`. `handleListPages` now resolves
+  `sort ?? DEFAULT_LIST_SORT` once. `sortPages`'s own default is still created-order and is
+  covered by a test that pins that intent — so the fix belongs at the caller, not in the util
+
 - **WebSocket API (`@cosense/std`)** is used for `create_page` / `insert_lines` because the REST API has no page creation/editing endpoints
 - **`create_page` rejects existing pages** (`persistent === true`). Without this check, `patch()` silently replaces all content since it's a diff-update API
 - **`insert_lines` uses exact match**. Partial match risks inserting at unintended lines
@@ -243,6 +268,7 @@ See README.md. Key variables:
 - `COSENSE_NOTATION_CONFIG` — Path to notation config JSON (heading levels, math, linking, custom rules)
 - `COSENSE_NOTATION_PAGE` — Cosense page title holding user-editable custom rules; appended to the `get_notation_guide` response as highest-priority rules (fetched per call, no restart needed)
 - `COSENSE_LINT` — Pre-write notation lint: `warn` (default — writes, then warns), `strict` (rejects the write), `off`
+- `COSENSE_REQUEST_TIMEOUT_MS` — Cut off a Cosense API request after this many ms (default 30000). Without it a stalled API means the tool call never returns
 - `COSENSE_ENABLE_DELETE` — Exposes `delete_page` / `rewrite_page`. Unset means they are not registered at all
 - `COSENSE_PROJECT_ALLOW_LIST` — Comma-separated projects the tools may touch. Unset means unrestricted. When set, the allowed names are listed in every tool's `projectName` description — that listing is the only way a client learns a non-default project exists
 - `MCP_PUBLIC_URL` + `MCP_OAUTH_PASSPHRASE` — Enable OAuth. Both required; setting only one throws
