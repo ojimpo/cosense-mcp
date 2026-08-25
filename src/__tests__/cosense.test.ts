@@ -1,4 +1,4 @@
-import { getPage, listPages, searchPages, createPageUrl, toReadablePage } from '@/cosense.js';
+import { getPage, listPages, searchPages, createPageUrl, toReadablePage, RequestTimeoutError } from '@/cosense.js';
 import { fetch } from '@whatwg-node/fetch';
 
 // fetchをモック
@@ -65,9 +65,11 @@ describe('cosense API functions', () => {
       const result = await getPage(mockProjectName, 'Test Page');
 
       expect(result).toEqual(mockPageResponse);
-      expect(mockedFetch).toHaveBeenCalledWith(
-        expect.stringContaining(`/api/pages/${mockProjectName}/Test%20Page`),
-      );
+      // SIDが無いときはCookieを付けない。signalは常に張る（タイムアウトのため）
+      const [url, init] = mockedFetch.mock.calls[0] as [string, RequestInit];
+      expect(url).toContain(`/api/pages/${mockProjectName}/Test%20Page`);
+      expect(init).not.toHaveProperty('headers');
+      expect(init.signal).toBeDefined();
     });
 
     test('APIエラーの場合にnullを返すこと', async () => {
@@ -338,6 +340,31 @@ describe('cosense API functions', () => {
       const result = toReadablePage(responseWithoutLastUpdate);
 
       expect(result.lastUpdateUser).toBeUndefined();
+    });
+  });
+
+  describe('タイムアウトの握り潰し防止', () => {
+    // 下流の catch は API エラーを「空の結果」「null」に丸めている。
+    // そこにタイムアウトを混ぜると、ハングは消えても静かに嘘（0件・ページ無し）を返す
+    beforeEach(() => {
+      mockedFetch.mockRejectedValue(new RequestTimeoutError('https://scrapbox.io/api/pages/x', 30000));
+    });
+
+    test('getPage はタイムアウトを null に丸めないこと', async () => {
+      await expect(getPage(mockProjectName, 'Test Page', mockSid)).rejects.toThrow(RequestTimeoutError);
+    });
+
+    test('listPages はタイムアウトを空の結果に丸めないこと', async () => {
+      await expect(listPages(mockProjectName, mockSid)).rejects.toThrow(RequestTimeoutError);
+    });
+
+    test('タイムアウト以外のネットワークエラーは従来どおり丸めること', async () => {
+      mockedFetch.mockRejectedValue(new Error('ECONNRESET'));
+
+      await expect(getPage(mockProjectName, 'Test Page', mockSid)).resolves.toBeNull();
+      const listed = await listPages(mockProjectName, mockSid);
+      expect(listed.pages).toEqual([]);
+      expect(listed.debug?.error).toBe('ECONNRESET');
     });
   });
 });

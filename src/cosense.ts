@@ -2,6 +2,74 @@ import { fetch } from "@whatwg-node/fetch";
 import { sortPages } from './utils/sort.js';
 const API_DOMAIN = process.env.API_DOMAIN || "scrapbox.io";
 
+type FetchInit = Parameters<typeof fetch>[1];
+type FetchResponse = Awaited<ReturnType<typeof fetch>>;
+
+/**
+ * Cosense API へのリクエストが返らなかったときの打ち切り時間（ミリ秒）。
+ *
+ * タイムアウトが無いと、API 側が詰まった瞬間に tool call が永久に返らず、
+ * MCP クライアントからは「セッションがフリーズした」ようにしか見えない。
+ * ここを通さない fetch を足さないこと。
+ */
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+
+function requestTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.COSENSE_REQUEST_TIMEOUT_MS?.trim();
+  if (!raw) return DEFAULT_REQUEST_TIMEOUT_MS;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_REQUEST_TIMEOUT_MS;
+}
+
+/** SID があれば Cookie ヘッダを組み立てる。無ければ undefined（公開プロジェクト向け）。 */
+function authHeaders(sid?: string): Record<string, string> | undefined {
+  return sid ? { Cookie: `connect.sid=${sid}` } : undefined;
+}
+
+/**
+ * タイムアウトで打ち切ったことを表すエラー。
+ *
+ * 専用クラスにしているのは、下流の catch が「APIエラー＝空の結果」に握り潰すため。
+ * タイムアウトをそこに混ぜると「0件でした」「ページはありません」と嘘をつくことになり、
+ * ハングは消えても静かに間違った答えを返すだけになる。必ず貫通させること。
+ */
+export class RequestTimeoutError extends Error {
+  constructor(url: string, timeoutMs: number) {
+    super(`Request timed out after ${timeoutMs}ms: ${url}`);
+    this.name = 'RequestTimeoutError';
+  }
+}
+
+/**
+ * タイムアウト付きの fetch。
+ *
+ * タイマーは成功後もあえて解除せず unref だけする。fetch はヘッダを受け取った時点で
+ * 解決するので、ここで clearTimeout すると本文の読み出し（`.json()` / `.text()`）が
+ * 無防備になる。signal を張ったままにしておけば本文の停滞でも中断できる。
+ * unref してあるのでプロセスを起こし続けることはない。
+ */
+async function fetchWithTimeout(url: string, sid?: string, init: FetchInit = {}): Promise<FetchResponse> {
+  const timeoutMs = requestTimeoutMs();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  timer.unref?.();
+
+  const headers = authHeaders(sid);
+
+  try {
+    return await fetch(url, {
+      ...init,
+      ...(headers ? { headers } : {}),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new RequestTimeoutError(url, timeoutMs);
+    }
+    throw error;
+  }
+}
+
 // /api/pages/:projectname/search/query の型定義
 type SearchQueryResponse = {
   projectName: string; // data取得先のproject名
@@ -103,11 +171,7 @@ async function getPage(
     const url = `https://${API_DOMAIN}/api/pages/${projectName}/${encodeURIComponent(pageName)}`;
     
 
-    const response = sid
-      ? await fetch(url, {
-          headers: { Cookie: `connect.sid=${sid}` },
-        })
-      : await fetch(url);
+    const response = await fetchWithTimeout(url, sid);
 
     if (!response.ok) {
       return null;
@@ -152,6 +216,8 @@ async function getPage(
 
     return typedPage;
   } catch (error) {
+    // タイムアウトは「ページが無い」と区別がつかなくなるので握り潰さない
+    if (error instanceof RequestTimeoutError) throw error;
     return null;
   }
 }
@@ -267,11 +333,7 @@ async function listPages(
       params: Object.fromEntries(params.entries())
     };
 
-    const response = sid
-      ? await fetch(url, {
-          headers: { Cookie: `connect.sid=${sid}` },
-        })
-      : await fetch(url);
+    const response = await fetchWithTimeout(url, sid);
     
     if (!response.ok) {
       return {
@@ -325,6 +387,8 @@ async function listPages(
     };
 
   } catch (error) {
+    // タイムアウトは「0件」と区別がつかなくなるので握り潰さない
+    if (error instanceof RequestTimeoutError) throw error;
     return {
       limit: 0,
       count: 0,
@@ -374,9 +438,7 @@ async function searchPages(
     searchQuery: query,
   };
 
-  const response = sid
-    ? await fetch(url, { headers: { Cookie: `connect.sid=${sid}` } })
-    : await fetch(url);
+  const response = await fetchWithTimeout(url, sid);
 
   if (!response.ok) {
     return {
@@ -475,9 +537,7 @@ async function getSmartContext(
   try {
     const url = `https://${API_DOMAIN}/api/smart-context/export-${hopCount}hop-links/${projectName}.txt?title=${encodeURIComponent(title)}`;
 
-    const response = await fetch(url, {
-      headers: { Cookie: `connect.sid=${sid}` },
-    });
+    const response = await fetchWithTimeout(url, sid);
 
     if (!response.ok) {
       return { ok: false, error: `API error: ${response.status} ${response.statusText}` };
@@ -494,3 +554,5 @@ export type { ListPagesResponse };
 
 // 関数のエクスポート
 export { getPage, listPages, listPagesWithSort, toReadablePage, createPageUrl, searchPages, getSmartContext };
+// テスト用（タイムアウトが実際に発火するかを検証するため）
+export { fetchWithTimeout, requestTimeoutMs, DEFAULT_REQUEST_TIMEOUT_MS };
