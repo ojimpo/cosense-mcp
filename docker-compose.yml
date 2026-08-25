@@ -7,6 +7,8 @@ services:
       - TRANSPORT=http
       - PORT=4100
       - COSENSE_PROJECT_NAME=${COSENSE_PROJECT_NAME}
+      # 触れるプロジェクトの上限。未設定なら無制限（＝SIDが届く全プロジェクト）
+      - COSENSE_PROJECT_ALLOW_LIST=${COSENSE_PROJECT_ALLOW_LIST:-}
       - COSENSE_SID=${COSENSE_SID}
       # ローカル用のフォールバック。既定は未設定（OAuth が主認証）
       - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN:-}
