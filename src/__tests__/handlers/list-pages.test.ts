@@ -1,4 +1,5 @@
-import { handleListPages } from '@/routes/handlers/list-pages.js';
+import { handleListPages, DEFAULT_LIST_LIMIT, DEFAULT_LIST_SORT } from '@/routes/handlers/list-pages.js';
+import { getSortValue } from '@/utils/format.js';
 import * as cosense from '@/cosense.js';
 
 // モックの設定
@@ -142,6 +143,47 @@ describe('handleListPages', () => {
       expect(result.isError).toBe(true);
       expect(result.content?.[0]?.text).toContain('Error:');
       expect(result.content?.[0]?.text).toContain(errorMessage);
+    });
+  });
+
+  describe('未指定時のデフォルト', () => {
+    test('limit未指定なら控えめな既定件数で取得すること', async () => {
+      // 以前は1000。1回のツール結果が253KBに膨らみ、クライアントが固まったように見えていた
+      await handleListPages(mockProjectName, mockCosenseSid, {});
+
+      expect(mockedCosense.listPagesWithSort).toHaveBeenCalledWith(
+        mockProjectName,
+        expect.objectContaining({ limit: DEFAULT_LIST_LIMIT }),
+        mockCosenseSid
+      );
+      expect(DEFAULT_LIST_LIMIT).toBeLessThan(1000);
+    });
+
+    test('sort未指定でも明示的な既定ソートを下流へ渡すこと', async () => {
+      // undefinedのまま流すと sortPages が created順に落ち、ヘッダーのupdated表記と食い違う
+      await handleListPages(mockProjectName, mockCosenseSid, {});
+
+      expect(mockedCosense.listPagesWithSort).toHaveBeenCalledWith(
+        mockProjectName,
+        expect.objectContaining({ sort: DEFAULT_LIST_SORT }),
+        mockCosenseSid
+      );
+    });
+
+    test('sort未指定でも日付欄の算出にundefinedを渡さないこと', async () => {
+      // getSortValue に undefined が届くと default 分岐で 'Not specified' になる
+      await handleListPages(mockProjectName, mockCosenseSid, { compact: true });
+
+      expect(getSortValue).toHaveBeenCalled();
+      for (const call of (getSortValue as jest.Mock).mock.calls) {
+        expect(call[1]).toBe(DEFAULT_LIST_SORT);
+      }
+    });
+
+    test('compactヘッダーが実際に使ったソートを表示すること', async () => {
+      const result = await handleListPages(mockProjectName, mockCosenseSid, { compact: true });
+
+      expect(result.content?.[0]?.text).toContain(`sort:${DEFAULT_LIST_SORT}`);
     });
   });
 });

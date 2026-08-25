@@ -28,6 +28,7 @@ import { listPages, getPage, toReadablePage } from "./cosense.js";
 import { formatYmd } from './utils/format.js';
 import { setupRoutes } from './routes/index.js';
 import { isDeleteEnabled } from './routes/handlers/delete-page.js';
+import { DEFAULT_LIST_LIMIT, DEFAULT_LIST_SORT } from './routes/handlers/list-pages.js';
 import { getProjectAllowList } from './utils/project.js';
 
 // 環境変数のデフォルト値と検証用の定数
@@ -290,13 +291,15 @@ function createServer(): Server {
               sort: {
                 type: "string",
                 enum: ["updated", "created", "accessed", "linked", "views", "title"],
-                description: "Sort method for the page list",
+                default: DEFAULT_LIST_SORT,
+                description: `Sort method for the page list. Defaults to '${DEFAULT_LIST_SORT}'.`,
               },
               limit: {
                 type: "number",
                 minimum: 1,
                 maximum: 1000,
-                description: "Maximum number of pages to return (1-1000)",
+                default: DEFAULT_LIST_LIMIT,
+                description: `Maximum number of pages to return (1-1000). Defaults to ${DEFAULT_LIST_LIMIT}. Raise it only when you actually need more — each page includes its first 5 lines, so large values return very large responses.`,
               },
               skip: {
                 type: "number",

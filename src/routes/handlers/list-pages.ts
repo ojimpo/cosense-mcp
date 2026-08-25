@@ -2,6 +2,19 @@ import { type ListPagesResponse } from "../../cosense.js";
 import { listPages, listPagesWithSort } from "../../cosense.js";
 import { formatPageOutput, formatPageCompact, formatError, getSortDescription, getSortValue } from '../../utils/format.js';
 
+/**
+ * `limit` 未指定時に返すページ数。
+ *
+ * 以前は1000だった。484ページのプロジェクトで実測すると1回のツール結果が253KB
+ * （6万トークン超）になり、クライアント側が固まったように見えるうえコンテキストを食い潰す。
+ * ページ一覧は「見渡す」ためのツールなので、既定は控えめにして必要な人が明示的に上げる。
+ * スキーマ側の `default` もこの定数を参照している（両者がずれると説明が嘘になる）。
+ */
+export const DEFAULT_LIST_LIMIT = 100;
+
+/** ソート未指定時の既定。表示・並び順・ヘッダー表記をここで一本化する。 */
+export const DEFAULT_LIST_SORT = 'updated';
+
 export interface ListPagesParams {
   sort?: string;
   limit?: number;
@@ -19,13 +32,16 @@ export async function handleListPages(
   try {
     const {
       sort,
-      limit = 1000,
+      limit = DEFAULT_LIST_LIMIT,
       skip = 0,  // デフォルト値を設定
       excludePinned = false,
       projectName: paramsProjectName,
       compact = false
     } = params;
     const projectName = paramsProjectName || defaultProjectName;
+    // sort未指定を早い段階で既定へ倒す。以前はundefinedのまま下流に流れ、
+    // 並び順はcreated順・ヘッダーはupdated表記・日付欄は'Not specified'と三者が食い違っていた
+    const effectiveSort = sort ?? DEFAULT_LIST_SORT;
     let pages;
 
     if (excludePinned) {
@@ -35,7 +51,7 @@ export async function handleListPages(
       
       while (unpinnedPages.length < targetLimit) {
         const fetchedPages = await listPages(projectName, cosenseSid, {
-          ...(sort !== undefined && { sort }),
+          sort: effectiveSort,
           limit: targetLimit * 3,
           skip: currentSkip
         });
@@ -58,8 +74,8 @@ export async function handleListPages(
       pages = await listPagesWithSort(
         projectName,
         {
-          ...(sort !== undefined && { sort }),
-          limit: limit || 10,
+          sort: effectiveSort,
+          limit,
           skip,
         },
         cosenseSid
@@ -73,9 +89,9 @@ export async function handleListPages(
       : `${pages.count}`;
 
     if (compact) {
-      const header = `${projectName} | ${countLabel} pages | sort:${sort || 'updated'}`;
+      const header = `${projectName} | ${countLabel} pages | sort:${effectiveSort}`;
       const lines = pages.pages.map((page) => {
-        const sortValue = getSortValue(page, sort);
+        const sortValue = getSortValue(page, effectiveSort);
         return formatPageCompact(page, { sortValue: sortValue.formatted });
       });
       output = [header, ...lines].join('\n');
@@ -85,12 +101,12 @@ export async function handleListPages(
         `Total pages: ${countLabel}`,
         `Pages fetched: ${pages.pages.length}`,
         `Pages skipped: ${pages.skip}`,
-        `Sort method: ${getSortDescription(sort)}`,
+        `Sort method: ${getSortDescription(effectiveSort)}`,
         '---'
       ].join('\n') + '\n';
 
       output += pages.pages.map((page, index) => {
-        const sortValue = getSortValue(page, sort);
+        const sortValue = getSortValue(page, effectiveSort);
         return formatPageOutput(page, index, {
           skip: skip || 0,
           showSort: true,
