@@ -63,6 +63,12 @@ curlプローブとJestの結合テストは壊れたフローを全部素通り
 - **承認は冪等にしておく。** pendingを承認時に消すと、二重送信・戻るボタン・
   リダイレクトが見えなかった押し直しが全部「expired」の行き止まりになる。
   pendingはTTLまで残し、同じ認可コードを返す（コードの単発性はトークンEP側で担保される）
+- **リダイレクトに付ける`iss`は、メタデータの`issuer`と文字列完全一致でなければならない（RFC 9207）。**
+  `issuerUrl.origin`は末尾スラッシュを落とすが、`createOAuthMetadata`が返す`issuer`（`issuerUrl.href`由来）は
+  付いたまま——1文字だけズレる。ChatGPTはこれを厳密比較していて、不一致だと**同意画面の承認自体は
+  成功したように見えるのに**、リダイレクト後に黙って捨てて`/authorize`からやり直す。サーバーログには
+  `consent approved`が複数回並ぶだけで例外もエラーも出ない。`iss`は必ず`issuerUrl.href`を使うこと
+  （`.origin`ではない）。2026-08-27にChatGPT接続で発生、`provider.ts`の`approve()`/`deny()`両方が該当していた
 
 **ログのミドルウェアはOAuthルーターより先にmountする。** 後ろに置くと `/authorize`・`/token`・
 `/oauth/consent` が一切ログに残らず、認可の失敗を追う手段が無くなる。上の2つはログを出して初めて
