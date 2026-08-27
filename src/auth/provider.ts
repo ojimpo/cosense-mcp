@@ -226,7 +226,11 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
     const redirect = new URL(pending.redirectUri);
     redirect.searchParams.set('code', code);
     if (pending.state !== undefined) redirect.searchParams.set('state', pending.state);
-    redirect.searchParams.set('iss', this.config.issuerUrl.origin);
+    // `iss` は AS メタデータの `issuer` と文字列完全一致でなければならない（RFC 9207）。
+    // `.origin` は末尾スラッシュを落とすため、`issuerUrl` が `new URL(base.origin)` 由来で
+    // 末尾スラッシュ付きの `.href` を持つここでは一致しない。ChatGPT はこれを厳密に比較しており、
+    // 不一致だと同意承認後のリダイレクトを黙って捨てて最初からやり直す（`/token` が一度も呼ばれない）。
+    redirect.searchParams.set('iss', this.config.issuerUrl.href);
     return redirect.href;
   }
 
@@ -239,7 +243,7 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
     redirect.searchParams.set('error', 'access_denied');
     redirect.searchParams.set('error_description', 'The user denied the request');
     if (pending.state !== undefined) redirect.searchParams.set('state', pending.state);
-    redirect.searchParams.set('iss', this.config.issuerUrl.origin);
+    redirect.searchParams.set('iss', this.config.issuerUrl.href);
     return redirect.href;
   }
 

@@ -137,8 +137,9 @@ describe('CosenseOAuthProvider', () => {
 
     expect(redirect.origin + redirect.pathname).toBe('https://claude.ai/api/mcp/auth_callback');
     expect(redirect.searchParams.get('state')).toBe('xyz');
-    // ChatGPTは iss を見て固定のリダイレクトURIを使う
-    expect(redirect.searchParams.get('iss')).toBe('https://cosense-mcp.example.com');
+    // ChatGPTはissを見て固定のリダイレクトURIを使う。AS メタデータの issuer（末尾スラッシュ付き）と
+    // 文字列完全一致でなければならない（RFC 9207）。ズレるとChatGPTが黙ってリダイレクトを捨てる
+    expect(redirect.searchParams.get('iss')).toBe('https://cosense-mcp.example.com/');
     expect(redirect.searchParams.get('code')).toBeTruthy();
   });
 
