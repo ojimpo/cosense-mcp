@@ -30,6 +30,7 @@ import {
   type OAuthConfig,
 } from './config.js';
 import { OAuthStore, generateToken } from './store.js';
+import { AmbiguousPassphraseError, type UserProfile } from './users.js';
 import {
   generateDek,
   openSid,
@@ -226,7 +227,16 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
     if (!this.loginLimiter.tryConsume(rateLimitKey)) {
       throw new ConsentError('Too many attempts. Try again later.');
     }
-    const user = this.config.users.authenticate(passphrase);
+    // 同じパスフレーズが複数の利用者に当たる状態は設定ミス。ここで通すと、
+    // 入力した本人も運用者も気づかないまま別人として振る舞うことになる。
+    let user: UserProfile | undefined;
+    try {
+      user = this.config.users.authenticate(passphrase);
+    } catch (error) {
+      if (!(error instanceof AmbiguousPassphraseError)) throw error;
+      console.error(`[users] ${error.message}; refusing to authenticate`);
+      throw new ConsentError('This passphrase matches more than one account. Contact whoever runs this server.');
+    }
     if (!user) {
       throw new ConsentError('Incorrect passphrase.');
     }

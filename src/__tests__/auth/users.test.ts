@@ -6,7 +6,12 @@
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { UserConfigError, UserDirectory, hashPassphrase } from '../../auth/users.js';
+import {
+  AmbiguousPassphraseError,
+  UserConfigError,
+  UserDirectory,
+  hashPassphrase,
+} from '../../auth/users.js';
 
 const OWNER_PASSPHRASE = 'owner-passphrase-1234';
 
@@ -78,6 +83,60 @@ describe('UserDirectory', () => {
     expect(directory.size).toBe(1);
     expect(directory.authenticate('explicit-default-99')?.projects).toEqual(['mine']);
     expect(directory.authenticate(OWNER_PASSPHRASE)).toBeUndefined();
+  });
+
+  it('同じパスフレーズを2人に配っていたら起動を止める', () => {
+    // 平文どうし
+    const plain = writeUsers({
+      version: 1,
+      users: [
+        { id: 'a', passphrase: 'shared-passphrase-99' },
+        { id: 'b', passphrase: 'shared-passphrase-99' },
+      ],
+    });
+    expect(() => UserDirectory.fromFile(plain, owner())).toThrow(/share a passphrase/);
+
+    // 片方が平文、もう片方がそのハッシュ
+    const mixed = writeUsers({
+      version: 1,
+      users: [
+        { id: 'a', passphrase: 'shared-passphrase-99' },
+        { id: 'b', passphraseHash: hashPassphrase('shared-passphrase-99') },
+      ],
+    });
+    expect(() => UserDirectory.fromFile(mixed, owner())).toThrow(/share a passphrase/);
+
+    // ハッシュ行をコピペした場合
+    const sameHash = hashPassphrase('shared-passphrase-99');
+    const copied = writeUsers({
+      version: 1,
+      users: [
+        { id: 'a', passphraseHash: sameHash },
+        { id: 'b', passphraseHash: sameHash },
+      ],
+    });
+    expect(() => UserDirectory.fromFile(copied, owner())).toThrow(/share a passphrase/);
+
+    // 環境変数の運用者と同じものを配ってしまった場合
+    const asOwner = writeUsers({ version: 1, users: [{ id: 'a', passphrase: OWNER_PASSPHRASE }] });
+    expect(() => UserDirectory.fromFile(asOwner, owner())).toThrow(/share a passphrase/);
+  });
+
+  it('別々にハッシュ化された同一パスフレーズは、認証の時点で撥ねる', () => {
+    // scrypt はソルトが違えば別のハッシュになるので、起動時には見抜けない。
+    // ここを素通りさせると、渡した相手が黙って別人として振る舞う
+    const path = writeUsers({
+      version: 1,
+      users: [
+        { id: 'a', passphraseHash: hashPassphrase('shared-passphrase-99') },
+        { id: 'b', passphraseHash: hashPassphrase('shared-passphrase-99') },
+      ],
+    });
+    const directory = UserDirectory.fromFile(path, owner());
+    expect(directory.size).toBe(3);
+    expect(() => directory.authenticate('shared-passphrase-99')).toThrow(AmbiguousPassphraseError);
+    // 他の利用者の認証は巻き添えにしない
+    expect(directory.authenticate(OWNER_PASSPHRASE)?.id).toBe('default');
   });
 
   it('壊れた設定は黙って無視せず起動を止める', () => {

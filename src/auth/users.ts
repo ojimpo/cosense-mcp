@@ -22,6 +22,14 @@ const SCRYPT_KEYLEN = 32;
 
 export class UserConfigError extends Error {}
 
+/**
+ * 1つのパスフレーズが複数の利用者に当たった。
+ *
+ * 黙って先頭を採ると、渡した相手が別人として振る舞う——しかも誰も気づかない。
+ * 認証は落とす側に倒す。
+ */
+export class AmbiguousPassphraseError extends UserConfigError {}
+
 export interface UserProfile {
   /** ログや監査に出る識別子。ファイル内で一意。 */
   id: string;
@@ -82,6 +90,32 @@ function verifyPlain(candidate: string, expected: string): boolean {
   const a = scryptSync(candidate, 'plain-compare', SCRYPT_KEYLEN, { N: 1024, r: SCRYPT_R, p: SCRYPT_P });
   const b = scryptSync(expected, 'plain-compare', SCRYPT_KEYLEN, { N: 1024, r: SCRYPT_R, p: SCRYPT_P });
   return timingSafeEqual(a, b);
+}
+
+/**
+ * 同じパスフレーズを2人に配っていないか、起動時に見える範囲で確かめる。
+ *
+ * 見抜けるのは (1) 同じ文字列がそのまま2つある（平文の重複、ハッシュ行のコピペ）、
+ * (2) 片方が平文でもう片方がそのハッシュ、の2つ。
+ * **別々のソルトでハッシュ化された同一パスフレーズは、ここでは検出できない**
+ * （それが scrypt の目的なので）。最後の網は `authenticate` 側に置いてある。
+ */
+function assertDistinctPassphrases(entries: Entry[]): void {
+  for (let i = 0; i < entries.length; i += 1) {
+    for (let j = i + 1; j < entries.length; j += 1) {
+      const a = entries[i]!;
+      const b = entries[j]!;
+      const duplicate =
+        a.secret === b.secret ||
+        (!a.hashed && b.hashed && verifyHashed(a.secret, b.secret)) ||
+        (!b.hashed && a.hashed && verifyHashed(b.secret, a.secret));
+      if (duplicate) {
+        throw new UserConfigError(
+          `users '${a.profile.id}' and '${b.profile.id}' share a passphrase; give each user their own`
+        );
+      }
+    }
+  }
 }
 
 interface Entry {
@@ -165,18 +199,29 @@ export class UserDirectory {
     for (const entry of fallback.entries) {
       if (!seen.has(entry.profile.id)) entries.push(entry);
     }
+    assertDistinctPassphrases(entries);
     return new UserDirectory(entries);
   }
 
-  /** パスフレーズから利用者を引く。一致しなければ undefined。 */
+  /**
+   * パスフレーズから利用者を引く。一致しなければ undefined。
+   *
+   * 複数に当たったら例外。起動時のチェックはソルト違いの同一パスフレーズを見抜けない
+   * （scrypt はソルトが違えば別のハッシュになる）ので、最後の網はここに要る。
+   */
   authenticate(passphrase: string): UserProfile | undefined {
-    let matched: UserProfile | undefined;
+    const matches: UserProfile[] = [];
     for (const entry of this.entries) {
       // 見つかっても全件回す。ループを抜ける位置で「何人目か」が漏れないようにする。
       const ok = entry.hashed ? verifyHashed(passphrase, entry.secret) : verifyPlain(passphrase, entry.secret);
-      if (ok && matched === undefined) matched = entry.profile;
+      if (ok) matches.push(entry.profile);
     }
-    return matched;
+    if (matches.length > 1) {
+      throw new AmbiguousPassphraseError(
+        `passphrase matches multiple users: ${matches.map((m) => m.id).join(', ')}`
+      );
+    }
+    return matches[0];
   }
 
   /** 利用者IDからプロファイルを引く（トークンに焼かれたIDを解決するため）。 */
