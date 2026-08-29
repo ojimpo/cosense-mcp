@@ -9,7 +9,12 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { UserDirectory } from '../auth/users.js';
-import { defaultSession, resolveSessionConfig, type SessionDefaults } from '../session.js';
+import {
+  defaultSession,
+  describeProjectName,
+  resolveSessionConfig,
+  type SessionDefaults,
+} from '../session.js';
 
 const DEFAULTS: SessionDefaults = {
   projectName: 'kouki',
@@ -73,5 +78,27 @@ describe('resolveSessionConfig', () => {
     const session = resolveSessionConfig({ extra: { userId: 'default' } }, users, DEFAULTS);
     expect(session).toEqual({ ...defaultSession(DEFAULTS), userId: 'default' });
     expect(session.allowedProjects).toEqual(['kouki', 'nbca-kit']);
+  });
+});
+
+describe('describeProjectName', () => {
+  it('許可リストが無ければ既定プロジェクトだけを案内する', () => {
+    const session = defaultSession({ ...DEFAULTS, allowedProjects: undefined });
+    expect(describeProjectName(session)).toBe("Target project name. If not specified, defaults to 'kouki'.");
+  });
+
+  it('許可リストは候補として列挙する（柵であると同時にメニューなので）', () => {
+    const description = describeProjectName(defaultSession(DEFAULTS));
+    expect(description).toContain('kouki, nbca-kit');
+  });
+
+  it('友人の接続には、その人に許したプロジェクトしか出さない', () => {
+    const users = directory([FRIEND]);
+    const session = resolveSessionConfig({ extra: { userId: 'friend' } }, users, DEFAULTS);
+    const description = describeProjectName(session);
+    // ここが固定のままだと、友人のクライアントに運用者のプロジェクト名が並ぶ
+    expect(description).toContain('shared');
+    expect(description).not.toContain('nbca-kit');
+    expect(description).not.toContain('kouki');
   });
 });

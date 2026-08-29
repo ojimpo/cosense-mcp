@@ -81,3 +81,19 @@ export function resolveSessionConfig(
     userId: profile.id,
   };
 }
+
+/**
+ * ツールスキーマの `projectName` に添える説明文。
+ *
+ * 許可リストは柵であると同時に**メニュー**でもある。クライアントには既定プロジェクト
+ * 以外の名前を知る手段が他に無く、ここに書かなければ、許可したプロジェクトは
+ * 事実上呼ばれないままになる。接続ごとに許可範囲が違うので、プロセス起動時ではなく
+ * 接続ごとに組み立てる——固定にすると、友人のクライアントに運用者のプロジェクト名が並ぶ。
+ */
+export function describeProjectName(session: SessionConfig): string {
+  const base = `Target project name. If not specified, defaults to '${session.projectName}'.`;
+  if (!session.allowedProjects || session.allowedProjects.length === 0) return base;
+  // 既定プロジェクトは isProjectAllowed が暗黙に許可するので、列挙にも含める
+  const allowed = [...new Set([session.projectName, ...session.allowedProjects].filter(Boolean))];
+  return `${base} This connection may only touch these projects: ${allowed.join(', ')}.`;
+}

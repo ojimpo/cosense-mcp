@@ -30,7 +30,7 @@ import { setupRoutes } from './routes/index.js';
 import { isDeleteEnabled } from './routes/handlers/delete-page.js';
 import { DEFAULT_LIST_LIMIT, DEFAULT_LIST_SORT } from './routes/handlers/list-pages.js';
 import { getProjectAllowList } from './utils/project.js';
-import { defaultSession, resolveSessionConfig, type SessionConfig, type SessionDefaults } from './session.js';
+import { defaultSession, describeProjectName, resolveSessionConfig, type SessionConfig, type SessionDefaults } from './session.js';
 
 // 環境変数のデフォルト値と検証用の定数
 const FETCH_PAGE_LIMIT = 100;  // 固定で100件取得
@@ -113,18 +113,6 @@ const notationPointer = "ALWAYS use format='scrapbox'. REQUIRED: call get_notati
 const bodyDescription = `Page content in Scrapbox/Cosense syntax. ${notationPointer} Do NOT duplicate the page title in the body (auto-displayed at top).`;
 const insertTextDescription = `${notationPointer} Can contain multiple lines separated by newline characters.`;
 const replaceTextDescription = `${notationPointer} Can contain multiple lines (replaces 1 line with multiple lines).`;
-
-// projectName の説明文。許可リストを設定しているなら、その中身をそのまま候補として見せる。
-// クライアントには既定プロジェクト以外の名前を知る手段が他に無く、書かなければ
-// COSENSE_PROJECT_ALLOW_LIST で許可したプロジェクトは事実上呼ばれないままになる。
-const projectNameDescription = (() => {
-  const base = `Target project name. If not specified, defaults to '${projectName}'.`;
-  const allowList = getProjectAllowList();
-  if (!allowList) return base;
-  // 既定プロジェクトは isProjectAllowed が暗黙に許可するので、列挙にも含める
-  const allowed = [...new Set([projectName, ...allowList].filter(Boolean))];
-  return `${base} This server may only touch these projects: ${allowed.join(', ')}.`;
-})();
 
 /** 環境変数だけから決まる既定値。stdio と、利用者が特定できない接続で使う。 */
 function sessionDefaults(): SessionDefaults {
@@ -218,6 +206,7 @@ function createServer(session: SessionConfig = defaultSession(sessionDefaults())
   });
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
+    const projectNameDescription = describeProjectName(session);
     const tools = [
         {
           name: getToolName("get_notation_guide"),
@@ -230,7 +219,7 @@ function createServer(session: SessionConfig = defaultSession(sessionDefaults())
         },
         {
           name: getToolName("create_page"),
-          description: `Create a new page in Scrapbox project on ${SERVICE_LABEL}. Creates a new page with the specified title and optional body text. Returns the page creation URL without opening browser. Uses ${projectName} project as default if projectName is not specified.`,
+          description: `Create a new page in Scrapbox project on ${SERVICE_LABEL}. Creates a new page with the specified title and optional body text. Returns the page creation URL without opening browser. Uses ${session.projectName} project as default if projectName is not specified.`,
           inputSchema: {
             type: "object",
             properties: {
@@ -262,7 +251,7 @@ function createServer(session: SessionConfig = defaultSession(sessionDefaults())
         },
         {
           name: getToolName("get_page_url"),
-          description: `Generate URL for a page in Scrapbox project on ${SERVICE_LABEL}. Returns the direct URL to the specified page without opening it in browser. Uses ${projectName} project as default if projectName is not specified.`,
+          description: `Generate URL for a page in Scrapbox project on ${SERVICE_LABEL}. Returns the direct URL to the specified page without opening it in browser. Uses ${session.projectName} project as default if projectName is not specified.`,
           inputSchema: {
             type: "object",
             properties: {
@@ -280,7 +269,7 @@ function createServer(session: SessionConfig = defaultSession(sessionDefaults())
         },
         {
           name: getToolName("get_page"),
-          description: `Get a page from Scrapbox project on ${SERVICE_LABEL}. Returns page content and its linked pages. Page content includes title and description in plain text format. Uses ${projectName} project as default if projectName is not specified.`,
+          description: `Get a page from Scrapbox project on ${SERVICE_LABEL}. Returns page content and its linked pages. Page content includes title and description in plain text format. Uses ${session.projectName} project as default if projectName is not specified.`,
           inputSchema: {
             type: "object",
             properties: {
@@ -298,7 +287,7 @@ function createServer(session: SessionConfig = defaultSession(sessionDefaults())
         },
         {
           name: getToolName("list_pages"),
-          description: `Browse and list pages from Scrapbox project on ${SERVICE_LABEL} with flexible sorting and pagination. Use this tool to discover pages by recency, popularity, or alphabetically. Returns page metadata and first 5 lines of content. Available sorting methods: updated (last update time), created (creation time), accessed (access time), linked (number of incoming links), views (view count), title (alphabetical). Different from search_pages which finds content by keywords. Uses ${projectName} project as default if projectName is not specified.`,
+          description: `Browse and list pages from Scrapbox project on ${SERVICE_LABEL} with flexible sorting and pagination. Use this tool to discover pages by recency, popularity, or alphabetically. Returns page metadata and first 5 lines of content. Available sorting methods: updated (last update time), created (creation time), accessed (access time), linked (number of incoming links), views (view count), title (alphabetical). Different from search_pages which finds content by keywords. Uses ${session.projectName} project as default if projectName is not specified.`,
           inputSchema: {
             type: "object",
             properties: {
@@ -334,7 +323,7 @@ function createServer(session: SessionConfig = defaultSession(sessionDefaults())
         },
         {
           name: getToolName("search_pages"),
-          description: `Search for content within pages in Scrapbox project on ${SERVICE_LABEL}. Use this tool to find pages containing specific keywords or phrases. Returns matching pages with highlighted search terms and content snippets. Limited to 100 results maximum. Supports basic search ("keyword"), multiple keywords ("word1 word2" for AND search), exclude words ("word1 -word2"), and exact phrases ("\\"exact phrase\\""). Different from list_pages which browses pages by metadata. Uses ${projectName} project as default if projectName is not specified.`,
+          description: `Search for content within pages in Scrapbox project on ${SERVICE_LABEL}. Use this tool to find pages containing specific keywords or phrases. Returns matching pages with highlighted search terms and content snippets. Limited to 100 results maximum. Supports basic search ("keyword"), multiple keywords ("word1 word2" for AND search), exclude words ("word1 -word2"), and exact phrases ("\\"exact phrase\\""). Different from list_pages which browses pages by metadata. Uses ${session.projectName} project as default if projectName is not specified.`,
           inputSchema: {
             type: "object",
             properties: {
@@ -352,7 +341,7 @@ function createServer(session: SessionConfig = defaultSession(sessionDefaults())
         },
         {
           name: getToolName("get_smart_context"),
-          description: `Get smart context for a page on ${SERVICE_LABEL}. Returns the target page and its linked pages (1-hop or 2-hop) with full content in AI-optimized format. Useful for understanding the context and related knowledge around a specific topic. Requires COSENSE_SID authentication. Uses ${projectName} project as default if projectName is not specified.`,
+          description: `Get smart context for a page on ${SERVICE_LABEL}. Returns the target page and its linked pages (1-hop or 2-hop) with full content in AI-optimized format. Useful for understanding the context and related knowledge around a specific topic. Requires COSENSE_SID authentication. Uses ${session.projectName} project as default if projectName is not specified.`,
           inputSchema: {
             type: "object",
             properties: {
@@ -375,7 +364,7 @@ function createServer(session: SessionConfig = defaultSession(sessionDefaults())
         },
         {
           name: getToolName("insert_lines"),
-          description: `Insert text after a specified line in a Scrapbox page on ${SERVICE_LABEL}. If target line not found, text is appended to the end of the page. Uses ${projectName} project as default if projectName is not specified.`,
+          description: `Insert text after a specified line in a Scrapbox page on ${SERVICE_LABEL}. If target line not found, text is appended to the end of the page. Uses ${session.projectName} project as default if projectName is not specified.`,
           inputSchema: {
             type: "object",
             properties: {
@@ -412,7 +401,7 @@ function createServer(session: SessionConfig = defaultSession(sessionDefaults())
         },
         {
           name: getToolName("replace_lines"),
-          description: `Replace a specific line in a Scrapbox page on ${SERVICE_LABEL}. The target line must match exactly and uniquely (single match only). Use get_page first to see current page content. Uses ${projectName} project as default if projectName is not specified.`,
+          description: `Replace a specific line in a Scrapbox page on ${SERVICE_LABEL}. The target line must match exactly and uniquely (single match only). Use get_page first to see current page content. Uses ${session.projectName} project as default if projectName is not specified.`,
           inputSchema: {
             type: "object",
             properties: {
@@ -449,7 +438,7 @@ function createServer(session: SessionConfig = defaultSession(sessionDefaults())
         },
         {
           name: getToolName("rename_page"),
-          description: `Rename a Scrapbox page on ${SERVICE_LABEL} by rewriting its title line. Fails if the page does not exist or a page with the new title already exists. IMPORTANT: links from other pages to the old title are NOT updated automatically — the response lists pages that may need updating. Uses ${projectName} project as default if projectName is not specified.`,
+          description: `Rename a Scrapbox page on ${SERVICE_LABEL} by rewriting its title line. Fails if the page does not exist or a page with the new title already exists. IMPORTANT: links from other pages to the old title are NOT updated automatically — the response lists pages that may need updating. Uses ${session.projectName} project as default if projectName is not specified.`,
           inputSchema: {
             type: "object",
             properties: {
@@ -469,12 +458,14 @@ function createServer(session: SessionConfig = defaultSession(sessionDefaults())
             required: ["pageTitle", "newTitle"],
           },
         },
-        // delete_page / rewrite_page は COSENSE_ENABLE_DELETE=true のときだけ登録する。
+        // delete_page / rewrite_page は、その接続に許しているときだけ登録する。
         // ページ全体を壊せる操作なので、既定では tools/list にも出さない
         // （公開しているエンドポイントでは「呼べる形で置いておかない」のが一番効く）。
-        ...(isDeleteEnabled() ? [{
+        // 実行時にもゲートしているが、見せない側を先に効かせる — 見えていると
+        // クライアントは「使える」と判断して提案してくるし、断り方も説明しづらい。
+        ...(session.enableDelete ? [{
           name: getToolName("delete_page"),
-          description: `Delete a page in Scrapbox project on ${SERVICE_LABEL}. Empties every line of the target page via the WebSocket patch API; Cosense automatically removes a page once all of its lines are empty. There is no undo — pass dryRun to preview what would be removed first. Errors if the page does not exist. Requires COSENSE_SID. Uses ${projectName} project as default if projectName is not specified.`,
+          description: `Delete a page in Scrapbox project on ${SERVICE_LABEL}. Empties every line of the target page via the WebSocket patch API; Cosense automatically removes a page once all of its lines are empty. There is no undo — pass dryRun to preview what would be removed first. Errors if the page does not exist. Requires COSENSE_SID. Uses ${session.projectName} project as default if projectName is not specified.`,
           inputSchema: {
             type: "object",
             properties: {
@@ -495,7 +486,7 @@ function createServer(session: SessionConfig = defaultSession(sessionDefaults())
           },
         }, {
           name: getToolName("rewrite_page"),
-          description: `Replace the entire content of a Scrapbox page on ${SERVICE_LABEL} with new content (the page title is preserved as the first line). This is a destructive, whole-page operation with no undo. Prefer insert_lines / replace_lines for targeted edits. Errors if the page does not exist, and rejects empty content (use delete_page to remove a page). Pass dryRun to preview before/after without changing anything. Requires COSENSE_SID. Uses ${projectName} project as default if projectName is not specified.`,
+          description: `Replace the entire content of a Scrapbox page on ${SERVICE_LABEL} with new content (the page title is preserved as the first line). This is a destructive, whole-page operation with no undo. Prefer insert_lines / replace_lines for targeted edits. Errors if the page does not exist, and rejects empty content (use delete_page to remove a page). Pass dryRun to preview before/after without changing anything. Requires COSENSE_SID. Uses ${session.projectName} project as default if projectName is not specified.`,
           inputSchema: {
             type: "object",
             properties: {
@@ -527,7 +518,7 @@ function createServer(session: SessionConfig = defaultSession(sessionDefaults())
         }] : []),
         {
           name: getToolName("delete_lines"),
-          description: `Delete a specific line from a Scrapbox page on ${SERVICE_LABEL}. The target line must match exactly and uniquely (single match only). Use get_page first to see current page content. Uses ${projectName} project as default if projectName is not specified.`,
+          description: `Delete a specific line from a Scrapbox page on ${SERVICE_LABEL}. The target line must match exactly and uniquely (single match only). Use get_page first to see current page content. Uses ${session.projectName} project as default if projectName is not specified.`,
           inputSchema: {
             type: "object",
             properties: {
