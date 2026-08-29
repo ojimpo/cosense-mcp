@@ -7,8 +7,12 @@ import { createHash, randomBytes } from 'node:crypto';
 import { createServer as createNetServer } from 'node:net';
 import type { AddressInfo, Server as NetServer } from 'node:net';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createApp } from '../../http-server.js';
 import { resolveOAuthConfig } from '../../auth/config.js';
+import { hashPassphrase } from '../../auth/users.js';
 
 const PASSPHRASE = 'correct-horse-battery';
 const REDIRECT_URI = 'https://claude.ai/api/mcp/auth_callback';
@@ -378,5 +382,96 @@ describe('HTTP transport + OAuth', () => {
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
     });
     expect(response.status).toBe(401);
+  });
+});
+
+describe('複数利用者（MCP_USERS_FILE）', () => {
+  const FRIEND_PASSPHRASE = 'friend-passphrase-99';
+  let base: string;
+  let listening: NetServer;
+
+  beforeAll(async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cosense-users-e2e-'));
+    const usersFile = join(dir, 'users.json');
+    writeFileSync(
+      usersFile,
+      JSON.stringify({
+        version: 1,
+        users: [{ id: 'friend', passphraseHash: hashPassphrase(FRIEND_PASSPHRASE), projects: ['shared'] }],
+      })
+    );
+
+    const port = await freePort();
+    base = `http://localhost:${port}`;
+    const oauth = resolveOAuthConfig({
+      MCP_PUBLIC_URL: base,
+      MCP_OAUTH_PASSPHRASE: PASSPHRASE,
+      MCP_USERS_FILE: usersFile,
+    })!;
+    const app = createApp(mcpServerFactory, { port, oauth });
+    listening = await new Promise<NetServer>((resolve) => {
+      const server = app.listen(port, '127.0.0.1', () => resolve(server));
+    });
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((resolve) => listening.close(() => resolve()));
+  });
+
+  /** 同意画面まで進めて pending_id を取る。 */
+  async function beginAuthorization(): Promise<string> {
+    const registration = await fetch(`${base}/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_name: 'Multi User', redirect_uris: [REDIRECT_URI], token_endpoint_auth_method: 'none' }),
+    });
+    const client = await registration.json();
+    const { challenge } = pkce();
+    const authorizeUrl = new URL(`${base}/authorize`);
+    authorizeUrl.search = new URLSearchParams({
+      client_id: client.client_id,
+      redirect_uri: REDIRECT_URI,
+      response_type: 'code',
+      code_challenge: challenge,
+      code_challenge_method: 'S256',
+      resource: `${base}/mcp`,
+    }).toString();
+    const html = await (await fetch(authorizeUrl)).text();
+    return /name="pending_id" value="([^"]+)"/.exec(html)![1]!;
+  }
+
+  const approve = (pendingId: string, passphrase: string) =>
+    fetch(`${base}/oauth/consent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      redirect: 'manual',
+      body: new URLSearchParams({ pending_id: pendingId, passphrase, action: 'approve' }),
+    });
+
+  it('users.json の利用者も運用者も、それぞれのパスフレーズで認可できる', async () => {
+    const friend = await approve(await beginAuthorization(), FRIEND_PASSPHRASE);
+    expect(friend.status).toBe(302);
+
+    // users.json を足しても、環境変数側の運用者は締め出されない
+    const ownerApproval = await approve(await beginAuthorization(), PASSPHRASE);
+    expect(ownerApproval.status).toBe(302);
+
+    const stranger = await approve(await beginAuthorization(), 'not-a-real-passphrase');
+    expect(stranger.status).toBe(401);
+  });
+
+  it('同じ認可リクエストを別の利用者が承認したら、前の利用者向けのコードは渡さない', async () => {
+    const pendingId = await beginAuthorization();
+
+    const first = await approve(pendingId, FRIEND_PASSPHRASE);
+    const firstCode = new URL(first.headers.get('location')!).searchParams.get('code');
+
+    // 同じ人が押し直した場合は冪等（戻るボタン・二重送信を行き止まりにしない）
+    const again = await approve(pendingId, FRIEND_PASSPHRASE);
+    expect(new URL(again.headers.get('location')!).searchParams.get('code')).toBe(firstCode);
+
+    // 別の人が承認したら別のコード。使い回すと利用者を取り違えたトークンが出る
+    const second = await approve(pendingId, PASSPHRASE);
+    expect(new URL(second.headers.get('location')!).searchParams.get('code')).not.toBe(firstCode);
   });
 });

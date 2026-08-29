@@ -1,12 +1,13 @@
 /**
  * MCP 仕様に沿った OAuth 2.1 認可サーバー兼リソースサーバーの中身。
  *
- * 利用者が実質1人なので、認可サーバーを外部 IdP に委譲せず同じプロセスに同居させる。
+ * 利用者が数人なので、認可サーバーを外部 IdP に委譲せず同じプロセスに同居させる。
  * DCR (RFC 7591) を素で受け付ける外部 IdP が少なく、委譲するほうがかえって
- * 設定と依存が増えるため。利用者の認証はパスフレーズ1つで足りる。
+ * 設定と依存が増えるため。利用者の認証はパスフレーズで足りる（誰のパスフレーズかは
+ * `UserDirectory` が引く）。
  */
 
-import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import type { Response } from 'express';
 import type { AuthorizationParams, OAuthServerProvider } from '@modelcontextprotocol/sdk/server/auth/provider.js';
 import type { OAuthRegisteredClientsStore } from '@modelcontextprotocol/sdk/server/auth/clients.js';
@@ -31,6 +32,12 @@ import {
 import { OAuthStore, generateToken } from './store.js';
 import { FixedWindowRateLimiter } from './rate-limit.js';
 
+/**
+ * 単独利用時代のトークンには利用者IDが焼かれていない。既定の利用者として扱う
+ * （`UserDirectory.single` が作るIDと揃えること）。
+ */
+export const DEFAULT_USER_ID = 'default';
+
 /** 同意画面を出し直すべきエラー（パスフレーズ間違い等）。 */
 export class ConsentError extends Error {}
 
@@ -49,10 +56,13 @@ interface PendingAuthorization {
   expiresAt: number;
   /** 発行済みの認可コード。再送信されたときに同じものを返すために覚えておく。 */
   issuedCode?: string;
+  /** そのコードを発行した利用者。別の利用者が同じ pending を承認したら作り直す。 */
+  issuedFor?: string;
 }
 
 interface AuthorizationCode {
   clientId: string;
+  userId: string;
   redirectUri: string;
   codeChallenge: string;
   scopes: string[];
@@ -201,7 +211,8 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
     if (!this.loginLimiter.tryConsume(rateLimitKey)) {
       throw new ConsentError('Too many attempts. Try again later.');
     }
-    if (!this.verifyPassphrase(passphrase)) {
+    const user = this.config.users.authenticate(passphrase);
+    if (!user) {
       throw new ConsentError('Incorrect passphrase.');
     }
     this.loginLimiter.reset(rateLimitKey);
@@ -210,11 +221,17 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
     // 見えなかった利用者の押し直しで「期限切れ」を出すのは、こちらの都合でしかない。
     // pending は TTL で消えるまで残し、認可コードも使い回す（コードの単発性は
     // トークンエンドポイント側で担保されている）。
-    const code = pending.issuedCode ?? generateToken();
-    if (pending.issuedCode === undefined) {
+    // ただし再利用できるのは「同じ利用者が押し直した」ときだけ。別のパスフレーズで
+    // 承認されたら、前の利用者向けに出したコードを渡してしまわないよう作り直す。
+    const reusable = pending.issuedCode !== undefined && pending.issuedFor === user.id;
+    const code = reusable ? pending.issuedCode! : generateToken();
+    if (!reusable) {
+      if (pending.issuedCode !== undefined) this.codes.delete(pending.issuedCode);
       pending.issuedCode = code;
+      pending.issuedFor = user.id;
       this.codes.set(code, {
         clientId: pending.clientId,
+        userId: user.id,
         redirectUri: pending.redirectUri,
         codeChallenge: pending.codeChallenge,
         scopes: pending.scopes,
@@ -222,6 +239,7 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
         expiresAt: nowSec() + AUTHORIZATION_CODE_TTL_SEC,
       });
     }
+    console.error(`[oauth] consent approved for user '${user.id}' (client ${pending.clientId})`);
 
     const redirect = new URL(pending.redirectUri);
     redirect.searchParams.set('code', code);
@@ -254,13 +272,6 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
       throw new PendingNotFoundError('This authorization request has expired. Start over from the client.');
     }
     return pending;
-  }
-
-  private verifyPassphrase(candidate: string): boolean {
-    // 長さの違いで分岐しないよう、固定長のダイジェスト同士を比較する。
-    const expected = createHash('sha256').update(this.config.passphrase).digest();
-    const actual = createHash('sha256').update(candidate).digest();
-    return timingSafeEqual(expected, actual);
   }
 
   // --- トークンエンドポイント ---
@@ -310,7 +321,7 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
     }
 
     const audience = requested ?? record.resource;
-    return this.issueTokens(client.client_id, record.scopes, audience);
+    return this.issueTokens(client.client_id, record.userId, record.scopes, audience);
   }
 
   async exchangeRefreshToken(
@@ -341,11 +352,18 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
 
     // ローテーションしても同じ認可の続きなので、grantId は引き継ぐ。
     // ここで新しいIDにすると、取り消し時に古い世代が取り残される。
-    return this.issueTokens(client.client_id, granted, requested ?? record.resource, record.grantId);
+    return this.issueTokens(
+      client.client_id,
+      record.userId ?? DEFAULT_USER_ID,
+      granted,
+      requested ?? record.resource,
+      record.grantId
+    );
   }
 
   private issueTokens(
     clientId: string,
+    userId: string,
     scopes: string[],
     resource: string | undefined,
     /** リフレッシュで再発行する場合は、元の認可のIDを引き継ぐ。 */
@@ -357,6 +375,7 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
 
     this.store.saveAccessToken(accessToken, {
       clientId,
+      userId,
       scopes,
       expiresAt: issuedAt + this.config.accessTokenTtlSec,
       ...(resource !== undefined ? { resource } : {}),
@@ -364,6 +383,7 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
     });
     this.store.saveRefreshToken(refreshToken, {
       clientId,
+      userId,
       scopes,
       expiresAt: issuedAt + this.config.refreshTokenTtlSec,
       ...(resource !== undefined ? { resource } : {}),
@@ -408,10 +428,15 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
       scopes: record.scopes,
       expiresAt: record.expiresAt,
       ...(record.resource !== undefined ? { resource: new URL(record.resource) } : {}),
-      // MCP のセッションを「どの認可で開かれたか」に縛るため grantId を渡す。
-      // リフレッシュでトークンがローテートしても grantId は引き継がれるので、
-      // 更新のたびにセッションが切れることはない（トークン値を鍵にすると切れる）。
-      ...(record.grantId !== undefined ? { extra: { grantId: record.grantId } } : {}),
+      // `extra` で下流に渡すもの:
+      // - userId: 利用者ごとに SID・許可プロジェクト・破壊的ツールを分けるため
+      // - grantId: MCP セッションを「どの認可で開かれたか」に縛るため。リフレッシュで
+      //   トークンがローテートしても引き継がれるので、更新のたびにセッションは切れない
+      //   （トークン値そのものを鍵にすると切れる）
+      extra: {
+        userId: record.userId ?? DEFAULT_USER_ID,
+        ...(record.grantId !== undefined ? { grantId: record.grantId } : {}),
+      },
     };
   }
 

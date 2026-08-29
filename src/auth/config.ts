@@ -11,6 +11,8 @@
  * で一致しているので、1つの実装で両対応できる。
  */
 
+import { UserDirectory } from './users.js';
+
 /** アクセストークンの有効期間（秒）。 */
 const DEFAULT_ACCESS_TOKEN_TTL_SEC = 60 * 60;
 /** リフレッシュトークンの有効期間（秒）。 */
@@ -32,8 +34,11 @@ export interface OAuthConfig {
    * （Claude.ai / ChatGPT はここが1文字でも違うと再認可ループに入る）。
    */
   resourceUrl: URL;
-  /** 単一利用者を認証するためのパスフレーズ。 */
-  passphrase: string;
+  /**
+   * 利用者ディレクトリ。パスフレーズから「誰か」を引くのはここだけの責任。
+   * `MCP_USERS_FILE` が無ければ、環境変数のパスフレーズを持つ利用者が1人だけ入っている。
+   */
+  users: UserDirectory;
   /** トークン・クライアント登録の永続化先。未指定ならメモリのみ。 */
   storePath?: string;
   accessTokenTtlSec: number;
@@ -96,10 +101,19 @@ export function resolveOAuthConfig(env: NodeJS.ProcessEnv = process.env): OAuthC
 
   const storePath = env.MCP_OAUTH_STORE?.trim();
 
+  // 環境変数のパスフレーズは常に「運用者本人」として残す。users.json を足したときに
+  // そちらが壊れていても自分だけは入れる状態にしておかないと、直す手段ごと失う。
+  const owner = UserDirectory.single(passphrase, { enableDelete: env.COSENSE_ENABLE_DELETE === 'true' });
+  const usersFile = env.MCP_USERS_FILE?.trim();
+  const users = usersFile ? UserDirectory.fromFile(usersFile, owner) : owner;
+  if (usersFile) {
+    console.error(`[users] loaded ${users.size} users from ${usersFile}: ${users.ids.join(', ')}`);
+  }
+
   return {
     issuerUrl,
     resourceUrl,
-    passphrase,
+    users,
     ...(storePath ? { storePath } : {}),
     accessTokenTtlSec: parsePositiveInt(env.MCP_OAUTH_ACCESS_TTL, DEFAULT_ACCESS_TOKEN_TTL_SEC, 'MCP_OAUTH_ACCESS_TTL'),
     refreshTokenTtlSec: parsePositiveInt(env.MCP_OAUTH_REFRESH_TTL, DEFAULT_REFRESH_TOKEN_TTL_SEC, 'MCP_OAUTH_REFRESH_TTL'),

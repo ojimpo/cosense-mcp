@@ -14,6 +14,11 @@ import type { OAuthClientInformationFull } from '@modelcontextprotocol/sdk/share
 
 export interface GrantRecord {
   clientId: string;
+  /**
+   * どの利用者の認可か。SID・許可プロジェクト・破壊的ツールの可否はここから引く。
+   * 単独利用時代のレコードには無いので optional（無ければ既定の利用者として扱う）。
+   */
+  userId?: string;
   scopes: string[];
   /** 秒精度の UNIX 時刻。 */
   expiresAt: number;

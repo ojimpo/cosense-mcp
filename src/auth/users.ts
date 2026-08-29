@@ -1,0 +1,194 @@
+/**
+ * 利用者ディレクトリ。
+ *
+ * このサーバーは長らく「利用者は1人」を前提にしていて、認証はパスフレーズ1つだった。
+ * 友人にも使ってもらうとなると、SID・触れるプロジェクト・破壊的ツールの可否を
+ * 人ごとに分ける必要がある。その最小単位がこのファイル。
+ *
+ * 認証（誰か）はここ、認可（何ができるか）は各利用者のプロファイル、
+ * SID の秘匿は別レイヤ（封筒暗号）と、役割を分けてある。パスフレーズは
+ * SID の復号鍵には使わない — 鍵をパスフレーズ由来にすると、サーバーを再起動する
+ * たびに全員に入力し直してもらうことになるため。
+ */
+
+import { existsSync, readFileSync } from 'node:fs';
+import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+
+/** scrypt のコスト。友人数人を総当たりする程度なら1回50ms前後で十分。 */
+const SCRYPT_N = 16384;
+const SCRYPT_R = 8;
+const SCRYPT_P = 1;
+const SCRYPT_KEYLEN = 32;
+
+export class UserConfigError extends Error {}
+
+export interface UserProfile {
+  /** ログや監査に出る識別子。ファイル内で一意。 */
+  id: string;
+  /**
+   * この利用者が触れる Cosense プロジェクト。先頭が既定プロジェクト。
+   * 空なら「サーバー既定（環境変数）に従う」。
+   */
+  projects: string[];
+  /** `delete_page` / `rewrite_page` をこの利用者に見せるか。 */
+  enableDelete: boolean;
+  /**
+   * Cosense SID の出どころ。
+   * - `consent`: 本人が同意画面で入力する。サーバー運用者は平文を保存しない
+   * - `env`: サーバーの `COSENSE_SID` を使う（従来どおりの単独利用）
+   */
+  sidSource: 'consent' | 'env';
+}
+
+interface StoredUser {
+  id?: unknown;
+  passphrase?: unknown;
+  passphraseHash?: unknown;
+  projects?: unknown;
+  enableDelete?: unknown;
+  sidSource?: unknown;
+}
+
+interface StoredFile {
+  version?: unknown;
+  users?: unknown;
+}
+
+/** パスフレーズを `scrypt$<salt-b64>$<hash-b64>` 形式にする。users.json を手で書く人向け。 */
+export function hashPassphrase(passphrase: string): string {
+  const salt = randomBytes(16);
+  const hash = scryptSync(passphrase, salt, SCRYPT_KEYLEN, { N: SCRYPT_N, r: SCRYPT_R, p: SCRYPT_P });
+  return `scrypt$${salt.toString('base64')}$${hash.toString('base64')}`;
+}
+
+function verifyHashed(candidate: string, stored: string): boolean {
+  const parts = stored.split('$');
+  if (parts.length !== 3 || parts[0] !== 'scrypt') return false;
+  let salt: Buffer;
+  let expected: Buffer;
+  try {
+    salt = Buffer.from(parts[1]!, 'base64');
+    expected = Buffer.from(parts[2]!, 'base64');
+  } catch {
+    return false;
+  }
+  if (expected.length !== SCRYPT_KEYLEN) return false;
+  const actual = scryptSync(candidate, salt, SCRYPT_KEYLEN, { N: SCRYPT_N, r: SCRYPT_R, p: SCRYPT_P });
+  return timingSafeEqual(expected, actual);
+}
+
+function verifyPlain(candidate: string, expected: string): boolean {
+  // 長さの違いで分岐しないよう、固定長のダイジェスト同士を比べる。
+  const a = scryptSync(candidate, 'plain-compare', SCRYPT_KEYLEN, { N: 1024, r: SCRYPT_R, p: SCRYPT_P });
+  const b = scryptSync(expected, 'plain-compare', SCRYPT_KEYLEN, { N: 1024, r: SCRYPT_R, p: SCRYPT_P });
+  return timingSafeEqual(a, b);
+}
+
+interface Entry {
+  profile: UserProfile;
+  /** `scrypt$...` 形式なら true。false なら平文比較。 */
+  hashed: boolean;
+  secret: string;
+}
+
+export class UserDirectory {
+  private constructor(private readonly entries: Entry[]) {}
+
+  /** 従来どおりの単独利用。環境変数のパスフレーズを持つ利用者が1人だけいる状態。 */
+  static single(passphrase: string, options: { enableDelete: boolean }): UserDirectory {
+    return new UserDirectory([
+      {
+        profile: { id: 'default', projects: [], enableDelete: options.enableDelete, sidSource: 'env' },
+        hashed: false,
+        secret: passphrase,
+      },
+    ]);
+  }
+
+  /**
+   * users.json を読む。
+   *
+   * 壊れたファイルで黙って「認証できない状態」になるより、起動を止めるほうがよい。
+   * 認証まわりの設定ミスは、気づかないまま公開されるのが一番まずい。
+   */
+  static fromFile(filePath: string, fallback: UserDirectory): UserDirectory {
+    if (!existsSync(filePath)) {
+      throw new UserConfigError(`MCP_USERS_FILE points at a file that does not exist: ${filePath}`);
+    }
+    let parsed: StoredFile;
+    try {
+      parsed = JSON.parse(readFileSync(filePath, 'utf-8')) as StoredFile;
+    } catch (error) {
+      throw new UserConfigError(`MCP_USERS_FILE is not valid JSON: ${String(error)}`);
+    }
+    if (parsed.version !== 1) {
+      throw new UserConfigError(`MCP_USERS_FILE has an unsupported version: ${String(parsed.version)}`);
+    }
+    if (!Array.isArray(parsed.users) || parsed.users.length === 0) {
+      throw new UserConfigError('MCP_USERS_FILE must contain a non-empty "users" array');
+    }
+
+    const entries: Entry[] = [];
+    const seen = new Set<string>();
+    for (const raw of parsed.users as StoredUser[]) {
+      const id = typeof raw.id === 'string' ? raw.id.trim() : '';
+      if (!id) throw new UserConfigError('every user in MCP_USERS_FILE needs a non-empty "id"');
+      if (seen.has(id)) throw new UserConfigError(`duplicate user id in MCP_USERS_FILE: ${id}`);
+      seen.add(id);
+
+      const hashedSecret = typeof raw.passphraseHash === 'string' ? raw.passphraseHash : undefined;
+      const plainSecret = typeof raw.passphrase === 'string' ? raw.passphrase : undefined;
+      if (!hashedSecret && !plainSecret) {
+        throw new UserConfigError(`user '${id}' needs either "passphraseHash" or "passphrase"`);
+      }
+      if (plainSecret && plainSecret.length < 12) {
+        throw new UserConfigError(`user '${id}' has a passphrase shorter than 12 characters`);
+      }
+      if (plainSecret && !hashedSecret) {
+        console.error(`[users] '${id}' stores a plaintext passphrase; run hashPassphrase() and use "passphraseHash"`);
+      }
+
+      const projects = Array.isArray(raw.projects)
+        ? raw.projects.filter((name): name is string => typeof name === 'string' && name.trim() !== '').map((n) => n.trim())
+        : [];
+      const sidSource = raw.sidSource === 'env' ? 'env' : 'consent';
+
+      entries.push({
+        profile: { id, projects, enableDelete: raw.enableDelete === true, sidSource },
+        hashed: hashedSecret !== undefined,
+        secret: hashedSecret ?? plainSecret!,
+      });
+    }
+
+    // 環境変数のパスフレーズは、users.json があっても「運用者本人」として残す。
+    // これが無いと、users.json を壊した瞬間に自分も締め出される。
+    for (const entry of fallback.entries) {
+      if (!seen.has(entry.profile.id)) entries.push(entry);
+    }
+    return new UserDirectory(entries);
+  }
+
+  /** パスフレーズから利用者を引く。一致しなければ undefined。 */
+  authenticate(passphrase: string): UserProfile | undefined {
+    let matched: UserProfile | undefined;
+    for (const entry of this.entries) {
+      // 見つかっても全件回す。ループを抜ける位置で「何人目か」が漏れないようにする。
+      const ok = entry.hashed ? verifyHashed(passphrase, entry.secret) : verifyPlain(passphrase, entry.secret);
+      if (ok && matched === undefined) matched = entry.profile;
+    }
+    return matched;
+  }
+
+  /** 利用者IDからプロファイルを引く（トークンに焼かれたIDを解決するため）。 */
+  get(id: string): UserProfile | undefined {
+    return this.entries.find((entry) => entry.profile.id === id)?.profile;
+  }
+
+  get size(): number {
+    return this.entries.length;
+  }
+
+  get ids(): string[] {
+    return this.entries.map((entry) => entry.profile.id);
+  }
+}
