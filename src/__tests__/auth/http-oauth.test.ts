@@ -313,6 +313,64 @@ describe('HTTP transport + OAuth', () => {
     expect(new URL(response.headers.get('location')!).searchParams.get('error')).toBe('invalid_target');
   });
 
+  it('セッションIDを知っていても、別の認可のトークンではそのセッションを触れない', async () => {
+    const alice = await obtainToken();
+    const bob = await obtainToken();
+
+    const init = await fetch(`${base}/mcp`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/event-stream',
+        Authorization: `Bearer ${alice.accessToken}`,
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'alice', version: '1' } },
+      }),
+    });
+    const sessionId = init.headers.get('mcp-session-id')!;
+    expect(sessionId).toBeTruthy();
+
+    const callAs = (accessToken: string) =>
+      fetch(`${base}/mcp`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json, text/event-stream',
+          Authorization: `Bearer ${accessToken}`,
+          'Mcp-Session-Id': sessionId,
+        },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }),
+      });
+
+    // 他人のトークンでは、セッションの存在すら伏せて 404 にする
+    const stolen = await callAs(bob.accessToken);
+    expect(stolen.status).toBe(404);
+
+    // 本人はそのまま使い続けられる
+    const own = await callAs(alice.accessToken);
+    expect(own.status).toBe(200);
+
+    // リフレッシュでトークンがローテートしても、同じ認可なのでセッションは切れない
+    const refreshed = await fetch(`${base}/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: alice.refreshToken,
+        client_id: alice.clientId,
+        resource: `${base}/mcp`,
+      }),
+    });
+    expect(refreshed.status).toBe(200);
+    const rotated = await refreshed.json();
+    const afterRefresh = await callAs(rotated.access_token);
+    expect(afterRefresh.status).toBe(200);
+  });
+
   it('偽のBearerトークンは401になる', async () => {
     const response = await fetch(`${base}/mcp`, {
       method: 'POST',

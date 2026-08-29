@@ -408,6 +408,10 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
       scopes: record.scopes,
       expiresAt: record.expiresAt,
       ...(record.resource !== undefined ? { resource: new URL(record.resource) } : {}),
+      // MCP のセッションを「どの認可で開かれたか」に縛るため grantId を渡す。
+      // リフレッシュでトークンがローテートしても grantId は引き継がれるので、
+      // 更新のたびにセッションが切れることはない（トークン値を鍵にすると切れる）。
+      ...(record.grantId !== undefined ? { extra: { grantId: record.grantId } } : {}),
     };
   }
 

@@ -6,6 +6,7 @@ import type { Express, Request, RequestHandler, Response } from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import { resolveOAuthConfig, type OAuthConfig } from './auth/config.js';
 import { setupOAuth } from './auth/index.js';
 import { OriginValidator } from './auth/origin.js';
@@ -124,6 +125,42 @@ export function createApp(createServer: ServerFactory, options: HttpServerOption
 
   const transports: Record<string, StreamableHTTPServerTransport> = {};
 
+  // セッションIDと「そのセッションを開いた認可」の対応。
+  // transports は Mcp-Session-Id を引くだけなので、これが無いと、セッションIDを知った
+  // 別のトークン保持者がそのセッションにそのまま乗れてしまう。全員が同じ SID と
+  // 同じ許可プロジェクトで動いている間は実害が無いが、利用者ごとに設定を分けた瞬間に
+  // これは権限の乗っ取りになる。分離を入れる前にここを閉じておく。
+  const sessionOwners: Record<string, string> = {};
+
+  /**
+   * そのリクエストが属する認可を表すキー。
+   * grantId はリフレッシュをまたいで不変なので、トークンが更新されてもセッションは切れない。
+   */
+  const ownerKey = (req: Request): string => {
+    const auth = (req as Request & { auth?: AuthInfo }).auth;
+    if (!auth) return 'unauthenticated';
+    const grantId = (auth.extra as { grantId?: unknown } | undefined)?.grantId;
+    return typeof grantId === 'string' ? `grant:${grantId}` : `client:${auth.clientId}`;
+  };
+
+  /**
+   * 既存セッションを、それを開いたのとは別の認可から触っていないか。
+   * 拒否は 404 に寄せる（403 だと「そのセッションIDは実在する」と教えることになる）。
+   */
+  const ownsSession = (req: Request, sessionId: string): boolean => {
+    if (sessionOwners[sessionId] === ownerKey(req)) return true;
+    console.error(`[auth] session ${sessionId} was not opened by ${ownerKey(req)}; refusing`);
+    return false;
+  };
+
+  const sessionNotFound = (res: Response): void => {
+    res.status(404).json({
+      jsonrpc: '2.0',
+      error: { code: -32001, message: 'Session not found. Please re-initialize.' },
+      id: null,
+    });
+  };
+
   const mcpMiddleware: RequestHandler[] = [cors(corsOptions), checkOrigin, express.json()];
   if (requireAuth) mcpMiddleware.push(requireAuth);
 
@@ -136,19 +173,25 @@ export function createApp(createServer: ServerFactory, options: HttpServerOption
       let transport: StreamableHTTPServerTransport;
 
       if (sessionId && transports[sessionId]) {
+        if (!ownsSession(req, sessionId)) {
+          sessionNotFound(res);
+          return;
+        }
         transport = transports[sessionId];
       } else if (isInitializeRequest(req.body)) {
         transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: () => randomUUID(),
           onsessioninitialized: (sid: string) => {
             transports[sid] = transport;
+            sessionOwners[sid] = ownerKey(req);
           },
         });
 
         transport.onclose = () => {
           const sid = transport.sessionId;
-          if (sid && transports[sid]) {
+          if (sid) {
             delete transports[sid];
+            delete sessionOwners[sid];
           }
         };
 
@@ -195,7 +238,7 @@ export function createApp(createServer: ServerFactory, options: HttpServerOption
   // GET /mcp - SSE streaming
   app.get('/mcp', ...mcpMiddleware, async (req: Request, res: Response) => {
     const sessionId = req.headers['mcp-session-id'] as string | undefined;
-    if (!sessionId || !transports[sessionId]) {
+    if (!sessionId || !transports[sessionId] || !ownsSession(req, sessionId)) {
       console.error(`[${new Date().toISOString()}] GET /mcp unknown session=${sessionId}, returning 404`);
       res.status(404).send('Session not found');
       return;
@@ -208,6 +251,10 @@ export function createApp(createServer: ServerFactory, options: HttpServerOption
     const sessionId = req.headers['mcp-session-id'] as string | undefined;
     if (!sessionId || !transports[sessionId]) {
       res.status(400).send('Invalid or missing session ID');
+      return;
+    }
+    if (!ownsSession(req, sessionId)) {
+      res.status(404).send('Session not found');
       return;
     }
     try {
