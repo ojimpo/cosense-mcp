@@ -489,6 +489,10 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
       throw new InvalidTokenError('Token was not issued for this resource server');
     }
 
+    // 「使われているか」を運用者が見られるようにする。SIDは見えないが、
+    // 誰がいつ使ったかは分かる——招待で人が増える以上、そこは把握できないと困る。
+    this.config.users.touch(record.userId ?? DEFAULT_USER_ID);
+
     // 保存されている SID は、いま提示されたトークンからしか開けない。
     // 開けなければ「SIDが無い利用者」として下流に渡す（サーバー既定の SID に落ちる）。
     let sid: string | undefined;

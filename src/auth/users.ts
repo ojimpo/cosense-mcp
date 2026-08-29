@@ -13,6 +13,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import type { StoredUserRecord, UserStore } from './user-store.js';
 
 /** scrypt のコスト。友人数人を総当たりする程度なら1回50ms前後で十分。 */
 const SCRYPT_N = 16384;
@@ -126,7 +127,28 @@ interface Entry {
 }
 
 export class UserDirectory {
-  private constructor(private readonly entries: Entry[]) {}
+  private constructor(
+    /** 起動時に確定する利用者（環境変数の運用者と `users.json`）。 */
+    private readonly staticEntries: Entry[],
+    /** 招待から登録された利用者。再起動を挟まずに増減するので、都度読む。 */
+    private readonly store?: UserStore
+  ) {}
+
+  /** 実行時に増減する保存先を繋ぐ。静的な設定はそのまま残る。 */
+  withStore(store: UserStore): UserDirectory {
+    return new UserDirectory(this.staticEntries, store);
+  }
+
+  /**
+   * 静的な設定と保存先を合わせた全件。静的側を先に置く——
+   * 運用者を保存先のレコードで上書きできてしまうと、招待経由で乗っ取れることになる。
+   */
+  private get entries(): Entry[] {
+    const dynamic = (this.store?.list() ?? [])
+      .filter((record) => !this.staticEntries.some((entry) => entry.profile.id === record.id))
+      .map(storedToEntry);
+    return [...this.staticEntries, ...dynamic];
+  }
 
   /** 従来どおりの単独利用。環境変数のパスフレーズを持つ利用者が1人だけいる状態。 */
   static single(passphrase: string, options: { enableDelete: boolean }): UserDirectory {
@@ -229,6 +251,19 @@ export class UserDirectory {
     return this.entries.find((entry) => entry.profile.id === id)?.profile;
   }
 
+  /**
+   * そのパスフレーズが既に誰かのものになっていないか。
+   * 登録時に呼ぶ。`authenticate` は複数一致で例外を投げるので、そのまま使えない。
+   */
+  isPassphraseTaken(passphrase: string): boolean {
+    try {
+      return this.authenticate(passphrase) !== undefined;
+    } catch {
+      // 複数一致＝当然「使われている」
+      return true;
+    }
+  }
+
   get size(): number {
     return this.entries.length;
   }
@@ -236,4 +271,48 @@ export class UserDirectory {
   get ids(): string[] {
     return this.entries.map((entry) => entry.profile.id);
   }
+
+  /** 静的な設定に居る利用者か（保存先から消せない＝招待では触れない）。 */
+  isStatic(id: string): boolean {
+    return this.staticEntries.some((entry) => entry.profile.id === id);
+  }
+
+  /**
+   * 保存先に利用者を足す。
+   *
+   * パスフレーズが既存の誰かと当たる場合は断る。ここを通すと、登録した本人が
+   * 別人として振る舞う（あるいは `authenticate` が例外を投げて両方入れなくなる）。
+   */
+  addUser(record: StoredUserRecord): void {
+    if (!this.store) throw new UserConfigError('No writable user store is configured');
+    if (this.entries.some((entry) => entry.profile.id === record.id)) {
+      throw new UserConfigError(`User '${record.id}' already exists`);
+    }
+    this.store.add(record);
+  }
+
+  /** 保存先から利用者を消す。静的な設定の利用者は消せない。 */
+  removeUser(id: string): boolean {
+    if (!this.store) return false;
+    if (this.isStatic(id)) return false;
+    return this.store.remove(id);
+  }
+
+  /** 最終利用時刻を進める。運用者が「使われているか」を見るためだけの値。 */
+  touch(id: string): void {
+    this.store?.touch(id);
+  }
+}
+
+function storedToEntry(record: StoredUserRecord): Entry {
+  return {
+    profile: {
+      id: record.id,
+      projects: record.projects,
+      enableDelete: record.enableDelete,
+      sidSource: record.sidSource,
+    },
+    hashed: true,
+    secret: record.passphraseHash,
+  };
 }

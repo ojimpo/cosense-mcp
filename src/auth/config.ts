@@ -12,6 +12,7 @@
  */
 
 import { UserDirectory } from './users.js';
+import { UserStore } from './user-store.js';
 
 /** アクセストークンの有効期間（秒）。 */
 const DEFAULT_ACCESS_TOKEN_TTL_SEC = 60 * 60;
@@ -105,9 +106,16 @@ export function resolveOAuthConfig(env: NodeJS.ProcessEnv = process.env): OAuthC
   // そちらが壊れていても自分だけは入れる状態にしておかないと、直す手段ごと失う。
   const owner = UserDirectory.single(passphrase, { enableDelete: env.COSENSE_ENABLE_DELETE === 'true' });
   const usersFile = env.MCP_USERS_FILE?.trim();
-  const users = usersFile ? UserDirectory.fromFile(usersFile, owner) : owner;
+  const staticUsers = usersFile ? UserDirectory.fromFile(usersFile, owner) : owner;
   if (usersFile) {
-    console.error(`[users] loaded ${users.size} users from ${usersFile}: ${users.ids.join(', ')}`);
+    console.error(`[users] loaded ${staticUsers.size} users from ${usersFile}: ${staticUsers.ids.join(', ')}`);
+  }
+
+  // 招待から登録された利用者の置き場。未指定なら招待は使えない（従来どおり静的な設定のみ）。
+  const usersStorePath = env.MCP_USERS_STORE?.trim();
+  const users = usersStorePath ? staticUsers.withStore(new UserStore(usersStorePath)) : staticUsers;
+  if (usersStorePath) {
+    console.error(`[users] writable store at ${usersStorePath}: ${users.size - staticUsers.size} enrolled`);
   }
 
   return {
