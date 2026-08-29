@@ -6,7 +6,8 @@ const params = {
   redirectUri: 'https://claude.ai/api/mcp/auth_callback',
   scopes: ['mcp'],
   resource: 'https://cosense-mcp.example.com/mcp',
-  actionPath: '/oauth/consent',
+  resourceHost: 'mcp.example.com',
+    actionPath: '/oauth/consent',
 };
 
 describe('renderConsentPage', () => {

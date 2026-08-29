@@ -36,6 +36,7 @@ const STYLE = `
   button[value="deny"] { order: -1; }
   .hint { font-size: 0.8rem; opacity: 0.7; margin: 0.35rem 0 1rem; }
   .optional { font-weight: 400; opacity: 0.65; }
+  input[readonly] { opacity: 0.7; cursor: default; }
   details { margin: 0.35rem 0 1rem; font-size: 0.8rem; }
   summary { cursor: pointer; opacity: 0.8; padding: 0.2rem 0; }
   details ol { margin: 0.6rem 0 0; padding-left: 1.2rem; line-height: 1.7; }
@@ -66,6 +67,8 @@ function layout(title: string, body: string): string {
 
 export interface ConsentPageParams {
   pendingId: string;
+  /** どのサーバーの資格情報かを示す表示専用の値（パスワードマネージャ用）。 */
+  resourceHost: string;
   /** 招待を受け付けるサーバーかどうか。受け付けないなら欄自体を出さない。 */
   invitesEnabled?: boolean;
   clientName: string;
@@ -92,6 +95,7 @@ export function renderConsentPage(params: ConsentPageParams): string {
   const inviteBlock = params.invitesEnabled
     ? `<label for="invite_code">Invite code <span class="optional">— only if you were given one</span></label>
   <input class="field" id="invite_code" name="invite_code" type="text" autocomplete="off"
+         data-1p-ignore data-lpignore="true"
          spellcheck="false" autocapitalize="none" placeholder="kfp-7q2-xm4">
   <p class="hint">Leave this empty if you already have an account here.</p>`
     : '';
@@ -110,14 +114,26 @@ ${errorBlock}
   <dt>Resource</dt><dd>${escapeHtml(params.resource)}</dd>
   <dt>Scopes</dt><dd>${escapeHtml(scopes)}</dd>
 </dl>
-<form method="post" action="${escapeHtml(params.actionPath)}" autocomplete="off">
+<!-- フォームに autocomplete="off" は付けない。1Password は補完では無視するが、
+     保存プロンプトの判定には効いてしまう。個別に抑えたい欄は data-1p-ignore で名指しする。 -->
+<form method="post" action="${escapeHtml(params.actionPath)}">
   <input type="hidden" name="pending_id" value="${escapeHtml(params.pendingId)}">
+  <!-- パスワードマネージャは「ユーザー名＋パスワード」の対で保存対象を判定する。
+       このサーバーにユーザー名の概念は無いので、どのサーバーの資格情報かが分かる
+       readonly の欄を置いて対にする。送信はされない（name 無し）。 -->
+  <label for="account">Server</label>
+  <input class="field" id="account" type="text" autocomplete="username"
+         value="${escapeHtml(params.resourceHost)}" readonly tabindex="-1">
+  <p class="hint">Shown so your password manager can file the passphrase under this server.</p>
   ${inviteBlock}
   <label for="passphrase">Passphrase</label>
   <input class="field" id="passphrase" name="passphrase" type="password" autocomplete="current-password" required autofocus>
   <p class="hint">${passphraseHint}</p>
   <label for="sid">Cosense SID</label>
-  <input class="field" id="sid" name="sid" type="password" autocomplete="off" spellcheck="false">
+  <!-- 2つ目の type=password があると「パスワード変更フォーム」に見えて、どちらを保存すべきか
+       判定できなくなる。SID は保存させたい値ではないので、名指しで無視させる。 -->
+  <input class="field" id="sid" name="sid" type="password" autocomplete="off"
+         data-1p-ignore data-lpignore="true" spellcheck="false">
   <p class="hint">The <code>connect.sid</code> cookie from scrapbox.io. Leave blank only if the server
   already holds a SID for your account.</p>
   <details>

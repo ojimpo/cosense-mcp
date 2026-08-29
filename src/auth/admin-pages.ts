@@ -31,6 +31,7 @@ const STYLE = `
   legend { font-size: 0.8rem; opacity: 0.7; padding: 0 0.4rem; }
   label { display: block; font-size: 0.85rem; margin: 0.75rem 0 0.25rem; }
   label:first-of-type { margin-top: 0; }
+  input[readonly] { opacity: 0.7; cursor: default; }
   input[type=text], input[type=password], input[type=number] {
     width: 100%; box-sizing: border-box; padding: 0.5rem; font-size: 0.95rem;
     border: 1px solid color-mix(in srgb, CanvasText 30%, transparent); border-radius: 6px;
@@ -72,6 +73,11 @@ export function renderAdminLogin(error?: string): string {
 <p class="sub">Invite people and see who is using this server.</p>
 ${error ? `<p class="error">${escapeHtml(error)}</p>` : ''}
 <form method="post" action="/login">
+  <!-- パスワードマネージャは「ユーザー名＋パスワード」の対で保存対象を判定する。
+       この画面に入れるのは運用者だけなので、その旨を表示専用の欄で対にする。
+       name が無いので送信はされない。 -->
+  <label for="account">Account</label>
+  <input id="account" type="text" autocomplete="username" value="operator" readonly tabindex="-1">
   <label for="passphrase">Operator passphrase</label>
   <input id="passphrase" name="passphrase" type="password" autocomplete="current-password" required autofocus>
   <button class="primary" type="submit">Sign in</button>

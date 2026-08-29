@@ -148,6 +148,7 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
       redirectUri: string;
       scopes: string[];
       resource: string;
+      resourceHost: string;
       actionPath: string;
       invitesEnabled?: boolean;
       error?: string;
@@ -212,6 +213,7 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
         redirectUri: pending.redirectUri,
         scopes: pending.scopes,
         resource: this.config.resourceUrl.href,
+        resourceHost: this.config.resourceUrl.host,
         actionPath: this.consentPath,
         invitesEnabled: this.config.invites !== undefined,
       })
@@ -227,6 +229,7 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
       redirectUri: pending.redirectUri,
       scopes: pending.scopes,
       resource: this.config.resourceUrl.href,
+      resourceHost: this.config.resourceUrl.host,
       actionPath: this.consentPath,
       invitesEnabled: this.config.invites !== undefined,
       ...(error !== undefined ? { error } : {}),
