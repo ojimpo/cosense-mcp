@@ -6,6 +6,7 @@ worldnine/scrapbox-cosense-mcp のフォーク。Claude.ai Custom Connector対�
 
 - `src/http-server.ts` — Express + StreamableHTTPServerTransport（HTTP transportの本体）
 - `src/auth/` — OAuth 2.1 認可サーバー兼リソースサーバー（Claude.ai / ChatGPT 両対応の唯一の認証手段）
+- `src/session.ts` — 接続ごとの設定解決。利用者を分けるときの分岐は全部ここ
 - `src/index.ts` — `TRANSPORT=http` でHTTPモード、デフォルトはstdio（フォーク元互換）
 - `Dockerfile` — node:22-slim マルチステージビルド
 - `docker-compose.yml` — `.env`で環境変数管理、ポート4100で稼働中
@@ -45,6 +46,68 @@ Claude.aiの`static_headers`はbeta。両方から使う前提なら OAuth 一�
   順番を入れ替えるとSDK側の素のメタデータが勝つので注意
 - **RFC 9728 のメタデータをSDKはパス付きURLにしか置かない。** パス無しを見に来るクライアントのため
   `/.well-known/oauth-protected-resource` にも同じ内容を置いている
+
+### 利用者ごとの分離（2026-08-29）
+
+単独利用前提だったところに、パスフレーズごとの「誰か」を入れた。`MCP_USERS_FILE`（未設定なら
+従来どおり単独利用）。**設定の流れは `パスフレーズ → UserProfile → AuthInfo.extra → SessionConfig
+→ createServer` の一本道**で、途中で `process.env` を読み直さないこと。読み直した瞬間に
+プロセス全体で1つの設定に戻る。
+
+- **`src/session.ts` の `resolveSessionConfig` が唯一の接続点。** 認可の結果から
+  「どのプロジェクトに・どのSIDで・どこまでできるか」を決める。要はここのフォールバックが全部
+- **利用者を特定できなければ既定に落とす。** stdio と users.json 未使用の構成のための道で、
+  そこでは「既定＝運用者本人」なので問題にならない
+- **`sidSource: 'consent'` の利用者は、絶対にサーバーのSIDへフォールバックさせない。**
+  復号できなければSID無し（＝書き込みが認証エラー）で止める。「書けない」より
+  「他人の権限で書けた」ほうが桁違いに悪い
+- **プロジェクトを絞った接続には `resources` を返さない。** あれは起動時に既定プロジェクトから
+  一度だけ取ったページ一覧なので、そのまま返すとその接続が触れないプロジェクトの一覧が漏れる
+- **許可リストは柵であると同時にメニュー。** `describeProjectName`（`src/session.ts`）が
+  ツールスキーマに候補を書く。ここを固定にすると、友人のクライアントに運用者のプロジェクト名が並ぶ
+- 破壊的ツールは `tools/list` に出さない側を先に効かせる。実行時ゲートもあるが、見えていると
+  クライアントは「使える」と判断して提案してくる
+
+**`index.ts` は import しただけでサーバーが起動するので、テストから読めない。** 分岐のある部分は
+`src/session.ts` に出してテストしてある。`index.ts` はフォーク元のファイルなので、
+マージコストを避けるため差分は最小に留めている（`tools` 配列が `session.enableDelete` を
+見ていることだけは目視確認）。
+
+### SIDの封筒暗号（2026-08-29）
+
+**鍵はアクセストークンから導く。** ストアはトークンをSHA-256ハッシュでしか持たないので、
+平文のトークンはクライアントにしか無い。だからディスク上には復号できない暗号文だけが残る。
+
+代案を潰した理由も書いておく:
+
+- 環境変数のマスターキー → 運用者が読めるので、ディスク漏洩にしか効かない
+- パスフレーズ由来 → 平文鍵をメモリにしか置けず、**再起動のたびに全員再入力**になる
+
+SID本体はグラント単位のDEKで1回だけ暗号化し、DEKだけをトークンごとに包む。鍵の連鎖は
+**認可コード → アクセス/リフレッシュトークン**。踏むと痛い点:
+
+- **リフレッシュでは、ローテーション前のトークンで包み直す。** ここを落とすとそのSIDは
+  二度と開けない。2世代連続でローテートするテストがある
+- **リフレッシュトークンが期限切れ＝そのSIDは永久に復号不能。** バグではなく仕様。
+  復旧手段を用意する＝運用者が開ける鍵を持つ、なので両立しない
+- **これはE2Eではない。** サーバーはCosense APIを叩く瞬間に平文を持つ。運用者がコードを
+  書き換えれば読める。守れるのは「保存されたものから漏れないこと」だけ
+- **平文のSIDをログに出さない。** `AuthInfo.extra.cosenseSid` から下流だけに存在する
+
+**ストアの `version` は上げない。** `sids` フィールドは `?? {}` で吸収している。
+バージョンを上げると全クライアントが再登録・再認可になる（＝利用者からは「突然切れた」に見える）。
+互換性は `src/__tests__/auth/store-compat.test.ts` で固定してある。
+
+### セッションはトークンではなく認可に縛る（2026-08-29）
+
+`transports` は `Mcp-Session-Id` で引くだけだったので、有効なトークンを持つ別人が
+セッションIDを知っていればそのセッションに乗れた。全員が同じ権限のうちは実害ゼロだが、
+利用者を分けた瞬間に権限の乗っ取りになる。
+
+- **所有者キーは `grantId`。トークン値ではない。** リフレッシュでトークンはローテートするので、
+  トークンを鍵にすると1時間ごとに全セッションが切れる
+- **拒否は 404。** 403 だと「そのセッションIDは実在する」と教えることになる
+- POST / GET / DELETE の**3経路すべて**で照合する
 
 ### 同意画面で踏んだ罠（2026-08-24、本番で2回失敗した）
 
@@ -210,7 +273,8 @@ All tools are also available as CLI subcommands (`get`, `list`, `search`, `creat
 - `src/utils/sort.ts` — Sorting with pinned page filtering
 - `src/utils/markdown-converter.ts` — Markdown → Scrapbox conversion (uses `md2sb`)
 - `src/utils/notation-lint.ts` — Pre-write lint for notation that the API accepts but Cosense renders wrong
-- `src/auth/` — OAuth 2.1 (`config.ts` env resolution, `store.ts` persistence, `provider.ts` flow, `index.ts` Express wiring)
+- `src/auth/` — OAuth 2.1 (`config.ts` env resolution, `store.ts` persistence, `provider.ts` flow, `index.ts` Express wiring, `users.ts` per-user directory, `sid-crypto.ts` SID envelope encryption)
+- `src/session.ts` — Turns an `AuthInfo` into one connection's settings (project, SID, allowlist, destructive tools)
 - `src/types/` — API response and MCP request/response type definitions
 - `src/cli.ts` — CLI entry point (args → CLI mode, no args → MCP server)
 - `src/index.ts` — Server entry point
@@ -280,6 +344,8 @@ See README.md. Key variables:
 - `MCP_PUBLIC_URL` + `MCP_OAUTH_PASSPHRASE` — Enable OAuth. Both required; setting only one throws
 - `MCP_OAUTH_STORE` — Where clients/tokens persist. Unset means a restart forces re-authorization
 - `MCP_ALLOW_UNAUTHENTICATED` — Explicitly allow starting the HTTP transport with no auth
+- `MCP_USERS_FILE` — Per-user settings (allowed projects, destructive tools, where the SID comes from) as JSON.
+  Unset means single-user as before. The `.env` passphrase stays valid as the operator even when this file exists
 - `MCP_ALLOWED_ORIGINS` — CORS allowlist and `Origin` validation list. Unset = report-only mode
 
 ## CI/CD & Release

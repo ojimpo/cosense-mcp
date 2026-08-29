@@ -171,6 +171,62 @@ URLは`/mcp`まで含めること。ここがリソース識別子と一致し�
 
 ChatGPTからも同じURLで繋がる（Developer modeのカスタムコネクタ）。ChatGPTはOAuth 2.1しか受け付けないので、認証なしでは接続できない。
 
+### 友人に使ってもらう（`MCP_USERS_FILE`）
+
+単独利用のままだと、URLとパスフレーズを渡した相手は**自分と同じ権限**になる。同じSIDで書くので
+Cosenseの履歴上は全部自分の編集になり、誰の操作か区別もつかない。
+
+`MCP_USERS_FILE` に利用者を並べると、パスフレーズごとに「誰か」が決まり、SID・触れるプロジェクト・
+破壊的ツールの可否が接続ごとに変わる。
+
+```json
+{
+  "version": 1,
+  "users": [
+    {
+      "id": "friend",
+      "passphraseHash": "scrypt$...",
+      "projects": ["shared"],
+      "enableDelete": false
+    }
+  ]
+}
+```
+
+| フィールド | 意味 |
+|---|---|
+| `id` | ログに出る識別子。ファイル内で一意 |
+| `passphraseHash` | `scrypt$<salt>$<hash>`。`hashPassphrase()` で作る |
+| `passphrase` | 平文でも書ける（起動時に警告）。ハッシュがあればそちらが優先 |
+| `projects` | 触れるプロジェクト。先頭が既定。空ならサーバー既定に従う |
+| `enableDelete` | `delete_page` / `rewrite_page` を見せるか。既定 `false` |
+| `sidSource` | `consent`（既定・本人が同意画面で入力）か `env`（サーバーのSIDを使う） |
+
+ハッシュはこう作る:
+
+```bash
+node -e "import('./build/auth/users.js').then(m => console.log(m.hashPassphrase('パスフレーズ')))"
+```
+
+**`.env` の `MCP_OAUTH_PASSPHRASE` は、このファイルがあっても運用者本人として残る。**
+users.json を壊したときに自分まで締め出されると、直す手段ごと失うため。users.json 側で
+`default` を名乗ればそちらが優先される。
+
+#### 相手のSIDを預かることについて
+
+友人の分まで書き込むには、その人のSIDがサーバーに要る。SIDはCosenseアカウントのセッション
+そのものなので、扱いは重い。このサーバーは次のようにしている。
+
+- **SIDは運用者が設定ファイルに書かない。本人が同意画面で入力する**（`sidSource: "consent"`）。
+  運用者が一度でも平文を見ていたら、後から暗号化しても意味がない
+- **保存はアクセストークンから導いた鍵での封筒暗号。** ストアはトークンをSHA-256ハッシュでしか
+  持たないので、平文のトークンはクライアントにしか無い。ディスク上には復号できない暗号文だけが残る
+- **これはE2E暗号ではない。** サーバーはCosense APIを叩く瞬間に平文を持つ。運用者がコードを
+  書き換えればいくらでも読める。防げるのは「ストアやバックアップが漏れたとき」と
+  「運用者がうっかり中身を見たとき」であって、**運用者を信頼しなくてよくなるわけではない**
+- リフレッシュトークンが期限切れになると、そのSIDは二度と復号できない。再認可して入れ直しになる
+  （復旧手段を用意する＝運用者が開ける鍵を持つ、なので両立しない）
+
 ### Claude Desktop / Claude Code（stdio）
 
 フォーク元と同じ方法で使える。詳細は[worldnine/scrapbox-cosense-mcp](https://github.com/worldnine/scrapbox-cosense-mcp)を参照。
@@ -207,6 +263,7 @@ claude mcp add cosense \
 | `MCP_ALLOWED_ORIGINS` | — | `/mcp`のCORS許可オリジンと`Origin`ヘッダ検証の許可リスト（カンマ区切り）。**未指定だとreportモード**（ログに残すだけで拒否しない） |
 | `MCP_AUTH_TOKEN` | — | 固定Bearerトークン。ローカル用のフォールバック |
 | `MCP_ALLOW_UNAUTHENTICATED` | `false` | 認証なしでHTTPを開くことを明示的に許可する |
+| `MCP_USERS_FILE` | — | 利用者ごとの設定（許可プロジェクト・破壊的ツールの可否・SIDの出どころ）を書いたJSON。未指定なら従来どおり単独利用 |
 
 ### その他
 
