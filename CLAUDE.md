@@ -103,19 +103,29 @@ Claude.aiの`static_headers`はbeta。両方から使う前提なら OAuth 一�
 `MCP_ADMIN_BIND` でバインド先を変える。**`/etc/cloudflared/config.yml` の ingress に
 4101 を足さないこと。** 足した瞬間にログイン画面がインターネットに晒される。
 
-Tailscale から開く方法は2つあり、**`tailscale serve` のほうがよい**:
+**`tailscale serve` を使う前に、必ず `tailscale serve status --json` で Funnel の状態を見ること。**
+arigato-nas は 2026-08-29 時点で `:443` と `:8443` の両方が **Funnel オン**（`/spotify-liked` 等を
+公開中）。この状態で `tailscale serve --bg 4101` を打つと、管理画面が `:443` の `/` に載り、
+**そのままインターネットに公開される**。`funnel` と `serve` を打ち間違えなくても、
+既に funnel が有効なポートに serve すると同じ結果になる。
 
 ```bash
-tailscale serve --bg 4101      # → https://arigato-nas.tail4d6580.ts.net/
+tailscale serve status --json | jq .AllowFunnel   # true のポートに serve してはいけない
 ```
 
-- compose の既定（`127.0.0.1:4101`）のままでよい
-- 本物の証明書付きHTTPSになるので、セッションcookieに `Secure` が付く（`req.secure` で判定）
-- **`tailscale funnel` と間違えないこと。** funnel はインターネットに公開する
+選択肢は3つ。arigato-nas の現状では **IP直バインドが一番事故りにくい**:
 
-もう一方（`MCP_ADMIN_BIND=100.85.219.71` でTailscale IPに直接バインド）でも
-MagicDNS名で開けるが、**再起動時に docker が tailscaled より先に上がるとバインドに失敗して
-コンテナが起動しない**。`restart: unless-stopped` で最終的には復帰するが、フラップする。
+| 方法 | URL | 注意 |
+|---|---|---|
+| **IP直バインド** | `http://arigato-nas:4101` | `MCP_ADMIN_BIND` に Tailscale IP。serve 設定に一切触らないので funnel と無関係。TLS無し（経路は WireGuard） |
+| Funnel オフのポートに serve | `https://arigato-nas.tail4d6580.ts.net:9443/` | 新しいポートは既定で funnel オフ。ただし同じノードなので、あとで誰かが funnel を足すと公開される |
+| Tailscale ノードを分ける | `https://cosense-mcp.tail4d6580.ts.net/` | サイドカーで tailscaled を動かし、`hostname: cosense-mcp` で参加。専用の名前とIPが付き、ホストの funnel 設定と完全に無関係になる。認証キーの管理が増える |
+
+`tailscale service`（VIPサービス）でも専用の名前を作れるが、**1.102.2 のCLIは `list` しか持たず、
+広告する側にはなれない**（`--advertise-services` が無い）。
+
+IP直バインドの唯一の欠点は、**再起動時に docker が tailscaled より先に上がるとバインドに失敗して
+コンテナが起動しない**こと。`restart: unless-stopped` で最終的には復帰するが、フラップする。
 
 ### SIDの封筒暗号（2026-08-29）
 

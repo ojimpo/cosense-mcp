@@ -244,14 +244,26 @@ MCP_ADMIN_PORT=4101                       # 管理画面のポート
 **Cloudflare Tunnel の ingress に足さないこと。** ログイン画面をインターネットに置かないことが
 一番の防御になる。
 
-Tailscale を使っているなら `tailscale serve` が楽:
+Tailscale を使っているなら、一番安全なのは**バインド先を Tailscale IP にするだけ**の方法:
 
 ```bash
-tailscale serve --bg 4101     # → https://<マシン名>.<tailnet>.ts.net/
+# .env
+MCP_ADMIN_BIND=100.x.y.z      # tailscale ip -4 の値
+# → http://<マシン名>:4101 で開ける（MagicDNS）
 ```
 
-tailnet 内にだけ、本物の証明書付きHTTPSで公開される（`tailscale funnel` はインターネットに
-公開するので**間違えないこと**）。スマホからも同じURLで開ける。
+`tailscale serve` でHTTPSにもできるが、**先に Funnel の状態を確認すること**:
+
+```bash
+tailscale serve status --json | jq .AllowFunnel
+```
+
+**`true` になっているポートに serve すると、そのままインターネットに公開される。**
+`funnel` と打ち間違えなくても同じ結果になる。Funnel オフのポートを明示的に選ぶこと:
+
+```bash
+tailscale serve --bg --https=9443 4101   # → https://<マシン名>.<tailnet>.ts.net:9443/
+```
 
 #### 相手のSIDを預かることについて
 
