@@ -220,7 +220,7 @@ users.json を壊したときに自分まで締め出されると、直す手段
 ```bash
 # .env
 MCP_USERS_STORE=/data/users-store.json   # 登録された利用者の置き場（招待の有効化条件）
-MCP_ADMIN_PORT=4101                       # 管理画面のポート
+MCP_ADMIN_PORT=4103                       # 管理画面のポート
 ```
 
 管理画面で「誰向けか」「触れるプロジェクト」「破壊的ツールの可否」「有効期間」を決めると、
@@ -240,7 +240,7 @@ MCP_ADMIN_PORT=4101                       # 管理画面のポート
 
 ##### 管理画面を公開しないこと
 
-管理画面は MCP とは別ポートで、compose の既定は `127.0.0.1:4101`。
+管理画面は MCP とは別ポートで、compose の既定は `127.0.0.1:4103`。
 **Cloudflare Tunnel の ingress に足さないこと。** ログイン画面をインターネットに置かないことが
 一番の防御になる。
 
@@ -252,7 +252,7 @@ MCP_ADMIN_PORT=4101                       # 管理画面のポート
 MCP_ADMIN_BIND=172.17.0.1
 ```
 
-プロキシ側で `mcp-admin.example.internal` → `http://172.17.0.1:4101` を足す。
+プロキシ側で `mcp-admin.example.internal` → `http://172.17.0.1:4103` を足す。
 
 `tailscale serve` でも公開できるが、**先に Funnel の状態を確認すること**:
 
@@ -264,7 +264,7 @@ tailscale serve status --json | jq .AllowFunnel
 `funnel` と打ち間違えなくても同じ結果になる。Funnel オフのポートを明示的に選ぶこと:
 
 ```bash
-tailscale serve --bg --https=9443 4101   # → https://<マシン名>.<tailnet>.ts.net:9443/
+tailscale serve --bg --https=9443 4103   # → https://<マシン名>.<tailnet>.ts.net:9443/
 ```
 
 #### 相手のSIDを預かることについて

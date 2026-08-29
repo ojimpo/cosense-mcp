@@ -99,8 +99,8 @@ Claude.aiの`static_headers`はbeta。両方から使う前提なら OAuth 一�
 
 #### 管理画面のURL（arigato-nas の実際の構成）
 
-管理画面は MCP とは**別ポート（4101）**。**`/etc/cloudflared/config.yml` の ingress に
-4101 を足さないこと。** 足した瞬間にログイン画面がインターネットに晒される。
+管理画面は MCP とは**別ポート（4103）**。**`/etc/cloudflared/config.yml` の ingress に
+4103 を足さないこと。** 足した瞬間にログイン画面がインターネットに晒される。
 
 arigato-nas には `*.arigato-nas` を配る仕組みが既にあり、**新しく何も足さずにそこへ載せられる**
 （2026-08-29 に実地調査）:
@@ -114,9 +114,16 @@ Nginx Proxy Manager:    :80 で 27個の *.arigato-nas を配信
 NPM の既存のプロキシホストは全部 **`http://172.17.0.1:<port>`**（docker ブリッジのゲートウェイ
 ＝ホスト）を向いている。同じ形に合わせる:
 
-1. `.env` に `MCP_ADMIN_BIND=172.17.0.1`
+1. `.env` に `MCP_ADMIN_BIND=172.17.0.1` と `MCP_ADMIN_PORT=4103`
    （`127.0.0.1` だと**NPMのコンテナから届かない**。0.0.0.0 は広すぎる）
-2. NPM に `cosense-mcp.arigato-nas` → `http://172.17.0.1:4101` を追加
+
+**ポートを決める前に空きを確認すること。** 2026-08-29 に 4101 で組んだら
+`otp-mcp` が2週間前から使っていて、`docker compose up` がバインドに失敗し
+本番が数分余計に落ちた。`ss -ltn | grep -oE ':41[0-9]{2}'` を先に見る。
+compose 側のポートは `${MCP_ADMIN_PORT}` を使って**1箇所で決まる**ようにしてある
+——両側にベタ書きすると、`.env` を変えてもコンテナの中と外がズレて
+「起動しているのに繋がらない」を作れる。
+2. NPM に `cosense-mcp.arigato-nas` → `http://172.17.0.1:4103` を追加
 3. `http://cosense-mcp.arigato-nas` で開ける。スマホからも Tailscale 経由で同じURL
 
 **HTTPSではない。** NPM は :443 をホストに公開しておらず、この構成の27サービス全部が
@@ -129,7 +136,7 @@ HTTP。経路は Tailscale（WireGuard）なので盗聴の心配は無く、セ
 ##### `tailscale serve` を使うなら、先に Funnel を確認する
 
 arigato-nas は `:443` と `:8443` の両方が **Funnel オン**（`/spotify-liked` 等を公開中）。
-この状態で `tailscale serve --bg 4101` を打つと、管理画面が `:443` の `/` に載り、
+この状態で `tailscale serve --bg 4103` を打つと、管理画面が `:443` の `/` に載り、
 **そのままインターネットに公開される**。`funnel` と打ち間違えなくても同じ結果になる。
 
 ```bash

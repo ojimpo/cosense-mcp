@@ -6,7 +6,7 @@ services:
       # 管理画面。**Cloudflare Tunnel に通さないこと** — 通した瞬間に
       # ログイン画面がインターネットに晒される。既定は localhost だけに開く。
       # スマホから触るなら MCP_ADMIN_BIND に Tailscale の IP を入れる
-      - "${MCP_ADMIN_BIND:-127.0.0.1}:4101:4101"
+      - "${MCP_ADMIN_BIND:-127.0.0.1}:${MCP_ADMIN_PORT:-4103}:${MCP_ADMIN_PORT:-4103}"
     environment:
       - TRANSPORT=http
       - PORT=4100
