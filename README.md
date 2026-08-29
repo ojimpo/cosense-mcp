@@ -244,15 +244,17 @@ MCP_ADMIN_PORT=4101                       # 管理画面のポート
 **Cloudflare Tunnel の ingress に足さないこと。** ログイン画面をインターネットに置かないことが
 一番の防御になる。
 
-Tailscale を使っているなら、一番安全なのは**バインド先を Tailscale IP にするだけ**の方法:
+すでにリバースプロキシ（Nginx Proxy Manager 等）で内向きのサブドメインを配っているなら、
+そこへ載せるのが一番楽:
 
 ```bash
-# .env
-MCP_ADMIN_BIND=100.x.y.z      # tailscale ip -4 の値
-# → http://<マシン名>:4101 で開ける（MagicDNS）
+# .env — リバースプロキシのコンテナから届く必要があるので、ループバックにはしない
+MCP_ADMIN_BIND=172.17.0.1
 ```
 
-`tailscale serve` でHTTPSにもできるが、**先に Funnel の状態を確認すること**:
+プロキシ側で `mcp-admin.example.internal` → `http://172.17.0.1:4101` を足す。
+
+`tailscale serve` でも公開できるが、**先に Funnel の状態を確認すること**:
 
 ```bash
 tailscale serve status --json | jq .AllowFunnel

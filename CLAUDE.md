@@ -97,35 +97,48 @@ Claude.aiの`static_headers`はbeta。両方から使う前提なら OAuth 一�
 - **利用者を消したら認可も落とす。** トークンを残すと、消したはずの人が寿命の分だけ使い続けられる。
   同時に鍵材料が消えるので、保存されていたSIDは永久に読めなくなる（これは仕様）
 
-#### 管理画面のポートを Tunnel に通さない
+#### 管理画面のURL（arigato-nas の実際の構成）
 
-管理画面は MCP とは**別ポート（4101）**。compose の既定は `127.0.0.1:4101` で、
-`MCP_ADMIN_BIND` でバインド先を変える。**`/etc/cloudflared/config.yml` の ingress に
+管理画面は MCP とは**別ポート（4101）**。**`/etc/cloudflared/config.yml` の ingress に
 4101 を足さないこと。** 足した瞬間にログイン画面がインターネットに晒される。
 
-**`tailscale serve` を使う前に、必ず `tailscale serve status --json` で Funnel の状態を見ること。**
-arigato-nas は 2026-08-29 時点で `:443` と `:8443` の両方が **Funnel オン**（`/spotify-liked` 等を
-公開中）。この状態で `tailscale serve --bg 4101` を打つと、管理画面が `:443` の `/` に載り、
-**そのままインターネットに公開される**。`funnel` と `serve` を打ち間違えなくても、
-既に funnel が有効なポートに serve すると同じ結果になる。
+arigato-nas には `*.arigato-nas` を配る仕組みが既にあり、**新しく何も足さずにそこへ載せられる**
+（2026-08-29 に実地調査）:
+
+```
+Tailscale Split DNS:   arigato-nas ドメイン → 100.85.219.71
+AdGuard Home の書き換え: *.arigato-nas → 100.85.219.71   （ワイルドカード1本）
+Nginx Proxy Manager:    :80 で 27個の *.arigato-nas を配信
+```
+
+NPM の既存のプロキシホストは全部 **`http://172.17.0.1:<port>`**（docker ブリッジのゲートウェイ
+＝ホスト）を向いている。同じ形に合わせる:
+
+1. `.env` に `MCP_ADMIN_BIND=172.17.0.1`
+   （`127.0.0.1` だと**NPMのコンテナから届かない**。0.0.0.0 は広すぎる）
+2. NPM に `cosense-mcp.arigato-nas` → `http://172.17.0.1:4101` を追加
+3. `http://cosense-mcp.arigato-nas` で開ける。スマホからも Tailscale 経由で同じURL
+
+**HTTPSではない。** NPM は :443 をホストに公開しておらず、この構成の27サービス全部が
+HTTP。経路は Tailscale（WireGuard）なので盗聴の心配は無く、セッションcookieの `Secure` は
+`req.secure` 判定なので自動的に付かない。
+
+**NPM の :80 は 0.0.0.0 に公開されている**ので、LAN上の機器からも届く（他の27サービスと同条件）。
+インターネットからは届かない。管理画面はパスフレーズで守られるが、LANに出ている点は認識しておく。
+
+##### `tailscale serve` を使うなら、先に Funnel を確認する
+
+arigato-nas は `:443` と `:8443` の両方が **Funnel オン**（`/spotify-liked` 等を公開中）。
+この状態で `tailscale serve --bg 4101` を打つと、管理画面が `:443` の `/` に載り、
+**そのままインターネットに公開される**。`funnel` と打ち間違えなくても同じ結果になる。
 
 ```bash
 tailscale serve status --json | jq .AllowFunnel   # true のポートに serve してはいけない
 ```
 
-選択肢は3つ。arigato-nas の現状では **IP直バインドが一番事故りにくい**:
-
-| 方法 | URL | 注意 |
-|---|---|---|
-| **IP直バインド** | `http://arigato-nas:4101` | `MCP_ADMIN_BIND` に Tailscale IP。serve 設定に一切触らないので funnel と無関係。TLS無し（経路は WireGuard） |
-| Funnel オフのポートに serve | `https://arigato-nas.tail4d6580.ts.net:9443/` | 新しいポートは既定で funnel オフ。ただし同じノードなので、あとで誰かが funnel を足すと公開される |
-| Tailscale ノードを分ける | `https://cosense-mcp.tail4d6580.ts.net/` | サイドカーで tailscaled を動かし、`hostname: cosense-mcp` で参加。専用の名前とIPが付き、ホストの funnel 設定と完全に無関係になる。認証キーの管理が増える |
-
-`tailscale service`（VIPサービス）でも専用の名前を作れるが、**1.102.2 のCLIは `list` しか持たず、
-広告する側にはなれない**（`--advertise-services` が無い）。
-
-IP直バインドの唯一の欠点は、**再起動時に docker が tailscaled より先に上がるとバインドに失敗して
-コンテナが起動しない**こと。`restart: unless-stopped` で最終的には復帰するが、フラップする。
+`tailscale service`（VIPサービス）で専用の名前を作る手もあるが、**1.102.2 のCLIは `list` しか
+持たず、広告する側にはなれない**（`--advertise-services` が無い）。専用の MagicDNS 名が要るなら
+サイドカーで tailscaled を別ノードとして動かすことになるが、**上のNPM構成があるので出番は無い**。
 
 ### SIDの封筒暗号（2026-08-29）
 
