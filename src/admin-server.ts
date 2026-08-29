@@ -169,9 +169,15 @@ export function createAdminApp(options: AdminServerOptions): Express {
 
     const id = randomBytes(32).toString('base64url');
     sessions.set(id, { csrfToken: randomBytes(32).toString('base64url'), expiresAt: Date.now() + SESSION_TTL_MS });
-    // Secure は付けない。Tailscale 越しの平文 HTTP で開く前提で、
-    // 付けると cookie が保存されずログインできなくなる（経路は WireGuard で暗号化されている）。
-    res.setHeader('Set-Cookie', `${SESSION_COOKIE}=${id}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_TTL_MS / 1000}`);
+    // `tailscale serve` 越しなら HTTPS なので Secure を付ける。IPで直に開いた場合は
+    // 平文 HTTP になるため付けない——決め打ちで付けると cookie が保存されず、
+    // ログインできているのに毎回ログイン画面に戻る、という分かりにくい壊れ方をする。
+    // どちらの経路も WireGuard の内側なので、盗聴の面では差がない。
+    const secure = req.secure ? ' Secure;' : '';
+    res.setHeader(
+      'Set-Cookie',
+      `${SESSION_COOKIE}=${id}; HttpOnly;${secure} SameSite=Strict; Path=/; Max-Age=${SESSION_TTL_MS / 1000}`
+    );
     res.redirect(302, '/');
   });
 

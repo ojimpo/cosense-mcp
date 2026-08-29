@@ -7,6 +7,7 @@ worldnine/scrapbox-cosense-mcp のフォーク。Claude.ai Custom Connector対�
 - `src/http-server.ts` — Express + StreamableHTTPServerTransport（HTTP transportの本体）
 - `src/auth/` — OAuth 2.1 認可サーバー兼リソースサーバー（Claude.ai / ChatGPT 両対応の唯一の認証手段）
 - `src/session.ts` — 接続ごとの設定解決。利用者を分けるときの分岐は全部ここ
+- `src/admin-server.ts` — 管理画面（別ポート）。招待の発行と、誰が登録して使っているかの一覧
 - `src/index.ts` — `TRANSPORT=http` でHTTPモード、デフォルトはstdio（フォーク元互換）
 - `Dockerfile` — node:22-slim マルチステージビルド
 - `docker-compose.yml` — `.env`で環境変数管理、ポート4100で稼働中
@@ -77,6 +78,44 @@ Claude.aiの`static_headers`はbeta。両方から使う前提なら OAuth 一�
 `src/session.ts` に出してテストしてある。`index.ts` はフォーク元のファイルなので、
 マージコストを避けるため差分は最小に留めている（`tools` 配列が `session.enableDelete` を
 見ていることだけは目視確認）。
+
+### 招待と管理画面（2026-08-29）
+
+利用者を1人増やすのに「JSONを編集して再起動」を要求すると、運用者しか動けない。
+招待は**権限を先に確定させた使い捨ての合言葉**で、受け取った本人が同意画面で
+パスフレーズとSIDを入れて登録を完了する。`MCP_USERS_STORE` を設定したときだけ有効。
+
+- **利用者のソースは2系統ある。** `users.json`（静的・手書き）と `MCP_USERS_STORE`（実行時に増減）。
+  **合成の順番が効いている** — 静的が先。逆にすると、保存先のレコードが `default` を名乗って
+  運用者のSIDとプロジェクトを継承できてしまう
+- **招待の消費は登録が全部通ってから。** 照合の時点で消費すると、パスフレーズの入力ミス1回で
+  招待が消え、運用者が発行し直す羽目になる
+- **登録時に「そのパスフレーズは使われているか」を必ず見る。** 通すと、以後その2人は
+  どちらも認証できなくなる（複数一致で撥ねられる）
+- **管理画面は運用者のパスフレーズだけで入る。** 利用者のもので入れると、招待された人が
+  招待する側に回れる
+- **利用者を消したら認可も落とす。** トークンを残すと、消したはずの人が寿命の分だけ使い続けられる。
+  同時に鍵材料が消えるので、保存されていたSIDは永久に読めなくなる（これは仕様）
+
+#### 管理画面のポートを Tunnel に通さない
+
+管理画面は MCP とは**別ポート（4101）**。compose の既定は `127.0.0.1:4101` で、
+`MCP_ADMIN_BIND` でバインド先を変える。**`/etc/cloudflared/config.yml` の ingress に
+4101 を足さないこと。** 足した瞬間にログイン画面がインターネットに晒される。
+
+Tailscale から開く方法は2つあり、**`tailscale serve` のほうがよい**:
+
+```bash
+tailscale serve --bg 4101      # → https://arigato-nas.tail4d6580.ts.net/
+```
+
+- compose の既定（`127.0.0.1:4101`）のままでよい
+- 本物の証明書付きHTTPSになるので、セッションcookieに `Secure` が付く（`req.secure` で判定）
+- **`tailscale funnel` と間違えないこと。** funnel はインターネットに公開する
+
+もう一方（`MCP_ADMIN_BIND=100.85.219.71` でTailscale IPに直接バインド）でも
+MagicDNS名で開けるが、**再起動時に docker が tailscaled より先に上がるとバインドに失敗して
+コンテナが起動しない**。`restart: unless-stopped` で最終的には復帰するが、フラップする。
 
 ### SIDの封筒暗号（2026-08-29）
 
@@ -280,6 +319,7 @@ All tools are also available as CLI subcommands (`get`, `list`, `search`, `creat
 - `src/utils/notation-lint.ts` — Pre-write lint for notation that the API accepts but Cosense renders wrong
 - `src/auth/` — OAuth 2.1 (`config.ts` env resolution, `store.ts` persistence, `provider.ts` flow, `index.ts` Express wiring, `users.ts` per-user directory, `sid-crypto.ts` SID envelope encryption)
 - `src/session.ts` — Turns an `AuthInfo` into one connection's settings (project, SID, allowlist, destructive tools)
+- `src/admin-server.ts` — Admin page on its own port (invites, enrolled people). Never expose it publicly
 - `src/types/` — API response and MCP request/response type definitions
 - `src/cli.ts` — CLI entry point (args → CLI mode, no args → MCP server)
 - `src/index.ts` — Server entry point
@@ -351,6 +391,11 @@ See README.md. Key variables:
 - `MCP_ALLOW_UNAUTHENTICATED` — Explicitly allow starting the HTTP transport with no auth
 - `MCP_USERS_FILE` — Per-user settings (allowed projects, destructive tools, where the SID comes from) as JSON.
   Unset means single-user as before. The `.env` passphrase stays valid as the operator even when this file exists
+- `MCP_USERS_STORE` — Where people who redeem an invite are persisted. Unset means invites are disabled
+- `MCP_INVITE_STORE` — Invite file. Defaults to `invites.json` beside `MCP_USERS_STORE`
+- `MCP_ADMIN_PORT` — Port for the admin page (invites, who is enrolled). Unset means it does not start.
+  **Never route this port through the public tunnel**
+- `MCP_ADMIN_BIND` — Host address compose publishes the admin port on. Defaults to `127.0.0.1`
 - `MCP_ALLOWED_ORIGINS` — CORS allowlist and `Origin` validation list. Unset = report-only mode
 
 ## CI/CD & Release
