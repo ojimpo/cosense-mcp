@@ -387,6 +387,7 @@ describe('HTTP transport + OAuth', () => {
 
 describe('複数利用者（MCP_USERS_FILE）', () => {
   const FRIEND_PASSPHRASE = 'friend-passphrase-99';
+  const FRIEND_SID = 's%3AfriendSession.abcdef';
   let base: string;
   let listening: NetServer;
 
@@ -397,7 +398,15 @@ describe('複数利用者（MCP_USERS_FILE）', () => {
       usersFile,
       JSON.stringify({
         version: 1,
-        users: [{ id: 'friend', passphraseHash: hashPassphrase(FRIEND_PASSPHRASE), projects: ['shared'] }],
+        users: [
+          {
+            id: 'friend',
+            passphraseHash: hashPassphrase(FRIEND_PASSPHRASE),
+            projects: ['shared'],
+            // 既定と同じだが、SID を本人に入力させる利用者だと読んで分かるように明示する
+            sidSource: 'consent',
+          },
+        ],
       })
     );
 
@@ -440,20 +449,21 @@ describe('複数利用者（MCP_USERS_FILE）', () => {
     return /name="pending_id" value="([^"]+)"/.exec(html)![1]!;
   }
 
-  const approve = (pendingId: string, passphrase: string) =>
+  const approve = (pendingId: string, passphrase: string, sid = FRIEND_SID) =>
     fetch(`${base}/oauth/consent`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       redirect: 'manual',
-      body: new URLSearchParams({ pending_id: pendingId, passphrase, action: 'approve' }),
+      body: new URLSearchParams({ pending_id: pendingId, passphrase, sid, action: 'approve' }),
     });
 
   it('users.json の利用者も運用者も、それぞれのパスフレーズで認可できる', async () => {
     const friend = await approve(await beginAuthorization(), FRIEND_PASSPHRASE);
     expect(friend.status).toBe(302);
 
-    // users.json を足しても、環境変数側の運用者は締め出されない
-    const ownerApproval = await approve(await beginAuthorization(), PASSPHRASE);
+    // users.json を足しても、環境変数側の運用者は締め出されない。
+    // 運用者は sidSource='env' なので SID 欄は空でよい。
+    const ownerApproval = await approve(await beginAuthorization(), PASSPHRASE, '');
     expect(ownerApproval.status).toBe(302);
 
     const stranger = await approve(await beginAuthorization(), 'not-a-real-passphrase');
@@ -471,7 +481,14 @@ describe('複数利用者（MCP_USERS_FILE）', () => {
     expect(new URL(again.headers.get('location')!).searchParams.get('code')).toBe(firstCode);
 
     // 別の人が承認したら別のコード。使い回すと利用者を取り違えたトークンが出る
-    const second = await approve(pendingId, PASSPHRASE);
+    const second = await approve(pendingId, PASSPHRASE, '');
     expect(new URL(second.headers.get('location')!).searchParams.get('code')).not.toBe(firstCode);
+  });
+
+  it('SIDを入力しないと、本人入力が必要な利用者は承認できない', async () => {
+    const denied = await approve(await beginAuthorization(), FRIEND_PASSPHRASE, '');
+    // 認可自体は通るのに書き込みだけ全部失敗する、という分かりにくい状態を作らない
+    expect(denied.status).toBe(401);
+    expect(await denied.text()).toContain('needs your own Cosense SID');
   });
 });

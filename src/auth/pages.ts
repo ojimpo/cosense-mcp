@@ -34,6 +34,8 @@ const STYLE = `
   /* DOM順はApprove→Denyだが、表示は打ち消し操作を左に置く慣習に合わせる。
      DOM順を戻すと、パスフレーズ欄でEnterを押したときにDenyが送信される。 */
   button[value="deny"] { order: -1; }
+  .hint { font-size: 0.8rem; opacity: 0.7; margin: 0.35rem 0 1rem; }
+  .field { margin-bottom: 0.25rem; }
   .error { padding: 0.6rem 0.8rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.9rem;
            background: color-mix(in srgb, #dc2626 15%, transparent); color: #dc2626; }
   footer { margin-top: 1.5rem; font-size: 0.8rem; opacity: 0.6; }
@@ -63,7 +65,13 @@ export interface ConsentPageParams {
   error?: string;
 }
 
-/** パスフレーズ入力と同意を1画面で兼ねる（利用者が1人なので分ける意味がない）。 */
+/**
+ * パスフレーズ入力と同意を1画面で兼ねる。
+ *
+ * SID 欄をここに置いているのが肝。運用者が利用者の SID を預かって設定ファイルに
+ * 書いてしまうと、暗号化しても運用者は平文を見たあとなので意味が無くなる。
+ * 本人がこの画面で入力し、サーバーはトークンでしか開けない形で保存する。
+ */
 export function renderConsentPage(params: ConsentPageParams): string {
   const errorBlock = params.error ? `<p class="error">${escapeHtml(params.error)}</p>` : '';
   const scopes = params.scopes.length > 0 ? params.scopes.join(', ') : '(none)';
@@ -82,7 +90,13 @@ ${errorBlock}
 <form method="post" action="${escapeHtml(params.actionPath)}" autocomplete="off">
   <input type="hidden" name="pending_id" value="${escapeHtml(params.pendingId)}">
   <label for="passphrase">Passphrase</label>
-  <input id="passphrase" name="passphrase" type="password" autocomplete="current-password" required autofocus>
+  <input class="field" id="passphrase" name="passphrase" type="password" autocomplete="current-password" required autofocus>
+  <p class="hint">Given to you by whoever runs this server.</p>
+  <label for="sid">Cosense SID</label>
+  <input class="field" id="sid" name="sid" type="password" autocomplete="off" spellcheck="false">
+  <p class="hint">The <code>connect.sid</code> cookie from scrapbox.io — this is what lets the server act as you.
+  It is stored encrypted under your access token, so the server operator cannot read it back.
+  Leave blank only if the server already holds a SID for your account.</p>
   <div class="actions">
     <button type="submit" name="action" value="approve">Approve</button>
     <!-- 拒否にパスフレーズは要らないので required の検証を飛ばす -->

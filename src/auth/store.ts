@@ -11,6 +11,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { OAuthClientInformationFull } from '@modelcontextprotocol/sdk/shared/auth.js';
+import type { SealedBox } from './sid-crypto.js';
 
 export interface GrantRecord {
   clientId: string;
@@ -31,6 +32,11 @@ export interface GrantRecord {
    * 古いストアには無いので optional。
    */
   grantId?: string;
+  /**
+   * このトークンで開ける形に包んだ DEK。SID の暗号文本体は grantId 側に1つだけ置く。
+   * トークンがローテートしても包み直すのは32バイトの DEK だけで済む。
+   */
+  wrappedDek?: SealedBox;
 }
 
 interface StoreData {
@@ -38,10 +44,15 @@ interface StoreData {
   clients: Record<string, OAuthClientInformationFull>;
   accessTokens: Record<string, GrantRecord>;
   refreshTokens: Record<string, GrantRecord>;
+  /**
+   * grantId → 暗号化された Cosense SID。
+   * ここに平文は無く、復号鍵はトークンからしか作れない。ストアが漏れても取り出せない。
+   */
+  sids: Record<string, SealedBox>;
 }
 
 function emptyData(): StoreData {
-  return { version: 1, clients: {}, accessTokens: {}, refreshTokens: {} };
+  return { version: 1, clients: {}, accessTokens: {}, refreshTokens: {}, sids: {} };
 }
 
 /** トークン文字列をストアのキーに変換する。 */
@@ -76,11 +87,14 @@ export class OAuthStore {
         console.error(`[oauth] ignoring store with unsupported version: ${String(parsed.version)}`);
         return;
       }
+      // `sids` は後から足したフィールド。古いストアには無いので、バージョンは
+      // 上げずに既定値で吸収する（上げると全クライアントが再認可になる）。
       this.data = {
         version: 1,
         clients: parsed.clients ?? {},
         accessTokens: parsed.accessTokens ?? {},
         refreshTokens: parsed.refreshTokens ?? {},
+        sids: parsed.sids ?? {},
       };
       this.pruneExpired();
     } catch (error) {
@@ -130,6 +144,43 @@ export class OAuthStore {
       }
     }
     if (changed) this.schedulePersist();
+    this.pruneOrphanedSids();
+  }
+
+  /**
+   * どのトークンからも辿れなくなった SID の暗号文を捨てる。
+   * 残しておいても復号鍵が二度と現れないので、ただのゴミになる。
+   */
+  private pruneOrphanedSids(): void {
+    const live = new Set<string>();
+    for (const bucket of [this.data.accessTokens, this.data.refreshTokens]) {
+      for (const record of Object.values(bucket)) {
+        if (record.grantId !== undefined) live.add(record.grantId);
+      }
+    }
+    let changed = false;
+    for (const grantId of Object.keys(this.data.sids)) {
+      if (!live.has(grantId)) {
+        delete this.data.sids[grantId];
+        changed = true;
+      }
+    }
+    if (changed) this.schedulePersist();
+  }
+
+  // --- 暗号化された SID ---
+
+  saveSid(grantId: string, box: SealedBox): void {
+    this.data.sids[grantId] = box;
+    this.schedulePersist();
+  }
+
+  getSid(grantId: string): SealedBox | undefined {
+    return this.data.sids[grantId];
+  }
+
+  countSids(): number {
+    return Object.keys(this.data.sids).length;
   }
 
   // --- クライアント登録 ---
@@ -214,6 +265,10 @@ export class OAuthStore {
         }
       }
     }
+    if (grantId in this.data.sids) {
+      delete this.data.sids[grantId];
+      removed += 1;
+    }
     if (removed > 0) this.schedulePersist();
     return removed;
   }
@@ -231,6 +286,7 @@ export class OAuthStore {
         if (record.clientId === clientId) delete bucket[key];
       }
     }
+    this.pruneOrphanedSids();
     this.schedulePersist();
   }
 }

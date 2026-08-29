@@ -80,9 +80,11 @@ export function setupOAuth(config: OAuthConfig): OAuthWiring {
 function createConsentHandler(provider: CosenseOAuthProvider): RequestHandler {
   return (req: Request, res: Response) => {
     res.setHeader('Cache-Control', 'no-store');
-    const body = req.body as { pending_id?: unknown; passphrase?: unknown; action?: unknown };
+    const body = req.body as { pending_id?: unknown; passphrase?: unknown; sid?: unknown; action?: unknown };
     const pendingId = typeof body.pending_id === 'string' ? body.pending_id : '';
     const passphrase = typeof body.passphrase === 'string' ? body.passphrase : '';
+    // SID はここから先、暗号化されるまでしか平文で存在しない。ログに落とさないこと。
+    const sid = typeof body.sid === 'string' ? body.sid : '';
 
     try {
       if (body.action === 'deny') {
@@ -91,7 +93,7 @@ function createConsentHandler(provider: CosenseOAuthProvider): RequestHandler {
         return;
       }
       // ネットワーク的な同一性しか手掛かりがないので、レート制限のキーは接続元 IP。
-      const redirectTo = provider.approve(pendingId, passphrase, req.ip ?? 'unknown');
+      const redirectTo = provider.approve(pendingId, passphrase, req.ip ?? 'unknown', sid);
       console.error(`[oauth] consent approved (pending=${pendingId.slice(0, 8)})`);
       res.redirect(302, redirectTo);
     } catch (error) {

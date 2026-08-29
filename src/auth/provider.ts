@@ -30,6 +30,15 @@ import {
   type OAuthConfig,
 } from './config.js';
 import { OAuthStore, generateToken } from './store.js';
+import {
+  generateDek,
+  openSid,
+  sealSid,
+  unwrapDek,
+  wrapDek,
+  SidDecryptError,
+  type SealedBox,
+} from './sid-crypto.js';
 import { FixedWindowRateLimiter } from './rate-limit.js';
 
 /**
@@ -63,6 +72,12 @@ interface PendingAuthorization {
 interface AuthorizationCode {
   clientId: string;
   userId: string;
+  /**
+   * 同意画面で入力された SID を包んだもの。鍵は認可コードそのものから導出するので、
+   * サーバーはコードを持っている間しか開けない（コードは10分でメモリから消える）。
+   */
+  sealedSid?: SealedBox;
+  wrappedDek?: SealedBox;
   redirectUri: string;
   codeChallenge: string;
   scopes: string[];
@@ -205,7 +220,7 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
    * 同意フォームの承認。成功するとリダイレクト先 URL を返す。
    * `iss` を必ず付ける — ChatGPT はこれを見て固定のリダイレクト URI を使う。
    */
-  approve(pendingId: string, passphrase: string, rateLimitKey: string): string {
+  approve(pendingId: string, passphrase: string, rateLimitKey: string, sid?: string): string {
     const pending = this.requirePending(pendingId);
 
     if (!this.loginLimiter.tryConsume(rateLimitKey)) {
@@ -214,6 +229,11 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
     const user = this.config.users.authenticate(passphrase);
     if (!user) {
       throw new ConsentError('Incorrect passphrase.');
+    }
+    const trimmedSid = sid?.trim() ?? '';
+    if (user.sidSource === 'consent' && trimmedSid === '') {
+      // ここを素通りさせると、認可は通るのに書き込みが全部認証エラーになる利用者ができる。
+      throw new ConsentError('This account needs your own Cosense SID. Paste the connect.sid cookie value.');
     }
     this.loginLimiter.reset(rateLimitKey);
 
@@ -225,6 +245,14 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
     // 承認されたら、前の利用者向けに出したコードを渡してしまわないよう作り直す。
     const reusable = pending.issuedCode !== undefined && pending.issuedFor === user.id;
     const code = reusable ? pending.issuedCode! : generateToken();
+
+    // SID は認可コードを鍵にして包む。運用者が平文を保存しないための最初の一歩で、
+    // ここから先はトークンを持っている本人以外は開けない。
+    const envelope = trimmedSid === '' ? undefined : (() => {
+      const dek = generateDek();
+      return { sealedSid: sealSid(dek, trimmedSid), wrappedDek: wrapDek(code, dek) };
+    })();
+
     if (!reusable) {
       if (pending.issuedCode !== undefined) this.codes.delete(pending.issuedCode);
       pending.issuedCode = code;
@@ -235,9 +263,15 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
         redirectUri: pending.redirectUri,
         codeChallenge: pending.codeChallenge,
         scopes: pending.scopes,
+        ...(envelope ?? {}),
         ...(pending.resource !== undefined ? { resource: pending.resource } : {}),
         expiresAt: nowSec() + AUTHORIZATION_CODE_TTL_SEC,
       });
+    } else if (envelope) {
+      // 同じ人が押し直したときはコードを使い回すが、SID は入力し直した側を採る
+      // （打ち間違いに気づいて再入力した、が一番ありそうな再送信理由なので）。
+      const record = this.codes.get(code);
+      if (record) Object.assign(record, envelope);
     }
     console.error(`[oauth] consent approved for user '${user.id}' (client ${pending.clientId})`);
 
@@ -321,7 +355,18 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
     }
 
     const audience = requested ?? record.resource;
-    return this.issueTokens(client.client_id, record.userId, record.scopes, audience);
+
+    // 認可コードで開けた DEK を、これから発行するトークンで包み直す。
+    // コードはこの直後に捨てられるので、開ける手段はトークンだけになる。
+    let dek: Buffer | undefined;
+    if (record.wrappedDek && record.sealedSid) {
+      dek = unwrapDek(authorizationCode, record.wrappedDek);
+    }
+    const grantId = randomUUID();
+    if (dek && record.sealedSid) {
+      this.store.saveSid(grantId, record.sealedSid);
+    }
+    return this.issueTokens(client.client_id, record.userId, record.scopes, audience, grantId, dek);
   }
 
   async exchangeRefreshToken(
@@ -352,12 +397,19 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
 
     // ローテーションしても同じ認可の続きなので、grantId は引き継ぐ。
     // ここで新しいIDにすると、取り消し時に古い世代が取り残される。
+    // ローテーション前のトークンでしか DEK は開けない。ここで包み直しそこねると、
+    // その利用者の SID は二度と復号できなくなる（＝再認可して入れ直しになる）。
+    let dek: Buffer | undefined;
+    if (record.wrappedDek) {
+      dek = unwrapDek(refreshToken, record.wrappedDek);
+    }
     return this.issueTokens(
       client.client_id,
       record.userId ?? DEFAULT_USER_ID,
       granted,
       requested ?? record.resource,
-      record.grantId
+      record.grantId,
+      dek
     );
   }
 
@@ -367,7 +419,9 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
     scopes: string[],
     resource: string | undefined,
     /** リフレッシュで再発行する場合は、元の認可のIDを引き継ぐ。 */
-    grantId: string = randomUUID()
+    grantId: string = randomUUID(),
+    /** SID を開く鍵。新しいトークンそれぞれで包み直して保存する。 */
+    dek?: Buffer
   ): OAuthTokens {
     const accessToken = generateToken();
     const refreshToken = generateToken();
@@ -380,6 +434,7 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
       expiresAt: issuedAt + this.config.accessTokenTtlSec,
       ...(resource !== undefined ? { resource } : {}),
       grantId,
+      ...(dek ? { wrappedDek: wrapDek(accessToken, dek) } : {}),
     });
     this.store.saveRefreshToken(refreshToken, {
       clientId,
@@ -388,6 +443,7 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
       expiresAt: issuedAt + this.config.refreshTokenTtlSec,
       ...(resource !== undefined ? { resource } : {}),
       grantId,
+      ...(dek ? { wrappedDek: wrapDek(refreshToken, dek) } : {}),
     });
 
     return {
@@ -422,6 +478,19 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
       // RFC 8707: 他リソース向けに発行されたトークンをここで受け付けてはいけない。
       throw new InvalidTokenError('Token was not issued for this resource server');
     }
+
+    // 保存されている SID は、いま提示されたトークンからしか開けない。
+    // 開けなければ「SIDが無い利用者」として下流に渡す（サーバー既定の SID に落ちる）。
+    let sid: string | undefined;
+    const sealed = record.grantId !== undefined ? this.store.getSid(record.grantId) : undefined;
+    if (sealed && record.wrappedDek) {
+      try {
+        sid = openSid(unwrapDek(token, record.wrappedDek), sealed);
+      } catch (error) {
+        if (!(error instanceof SidDecryptError)) throw error;
+        console.error(`[oauth] stored SID for grant ${record.grantId} could not be opened; re-authorization needed`);
+      }
+    }
     return {
       token,
       clientId: record.clientId,
@@ -436,6 +505,8 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
       extra: {
         userId: record.userId ?? DEFAULT_USER_ID,
         ...(record.grantId !== undefined ? { grantId: record.grantId } : {}),
+        // 平文の SID がプロセスに現れるのはここから下流だけ。ログには絶対に載せないこと。
+        ...(sid !== undefined ? { cosenseSid: sid } : {}),
       },
     };
   }
