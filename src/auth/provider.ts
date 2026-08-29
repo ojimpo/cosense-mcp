@@ -30,7 +30,7 @@ import {
   type OAuthConfig,
 } from './config.js';
 import { OAuthStore, generateToken } from './store.js';
-import { AmbiguousPassphraseError, type UserProfile } from './users.js';
+import { AmbiguousPassphraseError, hashPassphrase, type UserProfile } from './users.js';
 import {
   generateDek,
   openSid,
@@ -47,6 +47,19 @@ import { FixedWindowRateLimiter } from './rate-limit.js';
  * （`UserDirectory.single` が作るIDと揃えること）。
  */
 export const DEFAULT_USER_ID = 'default';
+
+/** 同意フォームから受け取る入力。位置引数で並べると取り違えるのでまとめて渡す。 */
+export interface ConsentSubmission {
+  /** 既存の利用者なら本人のパスフレーズ。招待からの登録ならこれから使うパスフレーズ。 */
+  passphrase: string;
+  /** 本人が入力した Cosense SID。 */
+  sid?: string | undefined;
+  /** 招待の合言葉。あればこの認可で利用者を新しく作る。 */
+  inviteCode?: string | undefined;
+}
+
+/** 招待から登録するとき、パスフレーズに求める最短の長さ。 */
+const MIN_ENROLLED_PASSPHRASE_LENGTH = 12;
 
 /** 同意画面を出し直すべきエラー（パスフレーズ間違い等）。 */
 export class ConsentError extends Error {}
@@ -136,6 +149,7 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
       scopes: string[];
       resource: string;
       actionPath: string;
+      invitesEnabled?: boolean;
       error?: string;
     }) => string
   ) {
@@ -199,6 +213,7 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
         scopes: pending.scopes,
         resource: this.config.resourceUrl.href,
         actionPath: this.consentPath,
+        invitesEnabled: this.config.invites !== undefined,
       })
     );
   }
@@ -213,6 +228,7 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
       scopes: pending.scopes,
       resource: this.config.resourceUrl.href,
       actionPath: this.consentPath,
+      invitesEnabled: this.config.invites !== undefined,
       ...(error !== undefined ? { error } : {}),
     });
   }
@@ -221,26 +237,19 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
    * 同意フォームの承認。成功するとリダイレクト先 URL を返す。
    * `iss` を必ず付ける — ChatGPT はこれを見て固定のリダイレクト URI を使う。
    */
-  approve(pendingId: string, passphrase: string, rateLimitKey: string, sid?: string): string {
+  approve(pendingId: string, submission: ConsentSubmission, rateLimitKey: string): string {
     const pending = this.requirePending(pendingId);
 
     if (!this.loginLimiter.tryConsume(rateLimitKey)) {
       throw new ConsentError('Too many attempts. Try again later.');
     }
-    // 同じパスフレーズが複数の利用者に当たる状態は設定ミス。ここで通すと、
-    // 入力した本人も運用者も気づかないまま別人として振る舞うことになる。
-    let user: UserProfile | undefined;
-    try {
-      user = this.config.users.authenticate(passphrase);
-    } catch (error) {
-      if (!(error instanceof AmbiguousPassphraseError)) throw error;
-      console.error(`[users] ${error.message}; refusing to authenticate`);
-      throw new ConsentError('This passphrase matches more than one account. Contact whoever runs this server.');
-    }
-    if (!user) {
-      throw new ConsentError('Incorrect passphrase.');
-    }
-    const trimmedSid = sid?.trim() ?? '';
+
+    const trimmedSid = submission.sid?.trim() ?? '';
+    const inviteCode = submission.inviteCode?.trim() ?? '';
+    // 招待からの登録も、既存利用者の認証も、同じレート制限の内側に置く。
+    const user = inviteCode
+      ? this.enroll(inviteCode, submission.passphrase, trimmedSid)
+      : this.authenticateExisting(submission.passphrase);
     if (user.sidSource === 'consent' && trimmedSid === '') {
       // ここを素通りさせると、認可は通るのに書き込みが全部認証エラーになる利用者ができる。
       throw new ConsentError('This account needs your own Cosense SID. Paste the connect.sid cookie value.');
@@ -294,6 +303,67 @@ export class CosenseOAuthProvider implements OAuthServerProvider {
     // 不一致だと同意承認後のリダイレクトを黙って捨てて最初からやり直す（`/token` が一度も呼ばれない）。
     redirect.searchParams.set('iss', this.config.issuerUrl.href);
     return redirect.href;
+  }
+
+  /** 既存の利用者としての認証。 */
+  private authenticateExisting(passphrase: string): UserProfile {
+    // 同じパスフレーズが複数の利用者に当たる状態は設定ミス。ここで通すと、
+    // 入力した本人も運用者も気づかないまま別人として振る舞うことになる。
+    let user: UserProfile | undefined;
+    try {
+      user = this.config.users.authenticate(passphrase);
+    } catch (error) {
+      if (!(error instanceof AmbiguousPassphraseError)) throw error;
+      console.error(`[users] ${error.message}; refusing to authenticate`);
+      throw new ConsentError('This passphrase matches more than one account. Contact whoever runs this server.');
+    }
+    if (!user) {
+      throw new ConsentError('Incorrect passphrase.');
+    }
+    return user;
+  }
+
+  /**
+   * 招待からの登録。合言葉・これから使うパスフレーズ・SID が揃って初めて成立する。
+   *
+   * **招待を消費するのは全部通ってから。** 途中で断ったところで消費すると、
+   * 入力ミス1回で招待が失われ、運用者が発行し直す羽目になる。
+   */
+  private enroll(inviteCode: string, passphrase: string, sid: string): UserProfile {
+    const invites = this.config.invites;
+    if (!invites) {
+      throw new ConsentError('This server does not accept invite codes.');
+    }
+    const invite = invites.find(inviteCode);
+    if (!invite) {
+      throw new ConsentError('That invite code is not valid, has expired, or has already been used.');
+    }
+    if (passphrase.length < MIN_ENROLLED_PASSPHRASE_LENGTH) {
+      throw new ConsentError(`Choose a passphrase of at least ${MIN_ENROLLED_PASSPHRASE_LENGTH} characters.`);
+    }
+    if (this.config.users.isPassphraseTaken(passphrase)) {
+      // 通すと、以後この2人はどちらも認証できなくなる（複数一致で撥ねられる）。
+      throw new ConsentError('That passphrase is already in use here. Choose a different one.');
+    }
+    if (sid === '') {
+      throw new ConsentError('Paste your own Cosense SID to finish signing up.');
+    }
+
+    this.config.users.addUser({
+      id: invite.userId,
+      passphraseHash: hashPassphrase(passphrase),
+      projects: invite.projects,
+      enableDelete: invite.enableDelete,
+      sidSource: 'consent',
+      createdAt: Math.floor(Date.now() / 1000),
+      inviteId: invite.id,
+    });
+    invites.consume(invite.id);
+    console.error(`[invites] ${invite.id} redeemed; enrolled user '${invite.userId}'`);
+
+    const profile = this.config.users.get(invite.userId);
+    if (!profile) throw new ConsentError('Sign-up failed. Contact whoever runs this server.');
+    return profile;
   }
 
   /** 同意フォームの拒否。エラー付きでリダイレクトして戻す。 */

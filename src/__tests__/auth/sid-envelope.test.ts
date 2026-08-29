@@ -100,7 +100,7 @@ function codeFrom(redirect: string): string {
 
 async function fullFlow(h: Harness, sid: string) {
   const pendingId = await beginConsent(h);
-  const code = codeFrom(h.provider.approve(pendingId, FRIEND_PASSPHRASE, '127.0.0.1', sid));
+  const code = codeFrom(h.provider.approve(pendingId, { passphrase: FRIEND_PASSPHRASE, sid }, '127.0.0.1'));
   return h.provider.exchangeAuthorizationCode(h.client, code, 'verifier', REDIRECT_URI, new URL(`${BASE}/mcp`));
 }
 
@@ -174,16 +174,16 @@ describe('SIDの封筒暗号', () => {
   it('SIDを自分で入れる利用者は、空欄のまま承認できない', async () => {
     const h = harness();
     const pendingId = await beginConsent(h);
-    expect(() => h.provider.approve(pendingId, FRIEND_PASSPHRASE, '127.0.0.1', '   ')).toThrow(ConsentError);
+    expect(() => h.provider.approve(pendingId, { passphrase: FRIEND_PASSPHRASE, sid: '   ' }, '127.0.0.1')).toThrow(ConsentError);
     // 入力し直せば同じ pending のまま通る（行き止まりにしない）
-    expect(() => h.provider.approve(pendingId, FRIEND_PASSPHRASE, '127.0.0.1', FRIEND_SID)).not.toThrow();
+    expect(() => h.provider.approve(pendingId, { passphrase: FRIEND_PASSPHRASE, sid: FRIEND_SID }, '127.0.0.1')).not.toThrow();
   });
 
   it('サーバー既定のSIDを使う利用者は空欄で通る', async () => {
     const h = harness();
     const pendingId = await beginConsent(h);
     // 環境変数のパスフレーズ側は sidSource='env'
-    const redirect = h.provider.approve(pendingId, OWNER_PASSPHRASE, '127.0.0.1', '');
+    const redirect = h.provider.approve(pendingId, { passphrase: OWNER_PASSPHRASE, sid: '' }, '127.0.0.1');
     const tokens = await h.provider.exchangeAuthorizationCode(
       h.client,
       codeFrom(redirect),
@@ -199,8 +199,8 @@ describe('SIDの封筒暗号', () => {
   it('打ち間違えて入力し直した場合は、あとから入れたSIDが採用される', async () => {
     const h = harness();
     const pendingId = await beginConsent(h);
-    const first = codeFrom(h.provider.approve(pendingId, FRIEND_PASSPHRASE, '127.0.0.1', 'wrong-sid'));
-    const second = codeFrom(h.provider.approve(pendingId, FRIEND_PASSPHRASE, '127.0.0.1', FRIEND_SID));
+    const first = codeFrom(h.provider.approve(pendingId, { passphrase: FRIEND_PASSPHRASE, sid: 'wrong-sid' }, '127.0.0.1'));
+    const second = codeFrom(h.provider.approve(pendingId, { passphrase: FRIEND_PASSPHRASE, sid: FRIEND_SID }, '127.0.0.1'));
     // 同じ人の押し直しなので認可コードは冪等
     expect(second).toBe(first);
 

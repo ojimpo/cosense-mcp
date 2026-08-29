@@ -106,8 +106,8 @@ describe('CosenseOAuthProvider', () => {
   it('同じpendingを再送信しても同じリダイレクトを返す（行き止まりにしない）', async () => {
     const { provider } = build();
     const pendingId = await startAuthorization(provider, { state: 'dup' });
-    const first = provider.approve(pendingId, PASSPHRASE, 'ip');
-    const second = provider.approve(pendingId, PASSPHRASE, 'ip');
+    const first = provider.approve(pendingId, { passphrase: PASSPHRASE }, 'ip');
+    const second = provider.approve(pendingId, { passphrase: PASSPHRASE }, 'ip');
     expect(second).toBe(first);
 
     // 使い回されたコードでも、トークン交換は1回しか通らない
@@ -119,8 +119,8 @@ describe('CosenseOAuthProvider', () => {
   it('再送信でもパスフレーズは毎回検証する', async () => {
     const { provider } = build();
     const pendingId = await startAuthorization(provider);
-    provider.approve(pendingId, PASSPHRASE, 'ip');
-    expect(() => provider.approve(pendingId, 'wrong-passphrase', 'ip2')).toThrow(ConsentError);
+    provider.approve(pendingId, { passphrase: PASSPHRASE }, 'ip');
+    expect(() => provider.approve(pendingId, { passphrase: 'wrong-passphrase' }, 'ip2')).toThrow(ConsentError);
   });
 
   it('別リソース宛の認可リクエストを拒否する', async () => {
@@ -133,7 +133,7 @@ describe('CosenseOAuthProvider', () => {
   it('承認するとcode・state・issを付けてリダイレクトする', async () => {
     const { provider } = build();
     const pendingId = await startAuthorization(provider, { state: 'xyz' });
-    const redirect = new URL(provider.approve(pendingId, PASSPHRASE, 'ip'));
+    const redirect = new URL(provider.approve(pendingId, { passphrase: PASSPHRASE }, 'ip'));
 
     expect(redirect.origin + redirect.pathname).toBe('https://claude.ai/api/mcp/auth_callback');
     expect(redirect.searchParams.get('state')).toBe('xyz');
@@ -146,7 +146,7 @@ describe('CosenseOAuthProvider', () => {
   it('パスフレーズが違えば認可コードを出さない', async () => {
     const { provider } = build();
     const pendingId = await startAuthorization(provider);
-    expect(() => provider.approve(pendingId, 'wrong-passphrase', 'ip')).toThrow(ConsentError);
+    expect(() => provider.approve(pendingId, { passphrase: 'wrong-passphrase' }, 'ip')).toThrow(ConsentError);
     // pending は消えないので画面を出し直せる
     expect(provider.renderConsentFor(pendingId, 'Incorrect passphrase.')).toContain('Incorrect passphrase');
   });
@@ -155,9 +155,9 @@ describe('CosenseOAuthProvider', () => {
     const { provider } = build();
     const pendingId = await startAuthorization(provider);
     for (let i = 0; i < 10; i += 1) {
-      expect(() => provider.approve(pendingId, 'wrong-passphrase', 'ip')).toThrow(/Incorrect/);
+      expect(() => provider.approve(pendingId, { passphrase: 'wrong-passphrase' }, 'ip')).toThrow(/Incorrect/);
     }
-    expect(() => provider.approve(pendingId, PASSPHRASE, 'ip')).toThrow(/Too many attempts/);
+    expect(() => provider.approve(pendingId, { passphrase: PASSPHRASE }, 'ip')).toThrow(/Too many attempts/);
   });
 
   it('拒否するとaccess_deniedでリダイレクトする', async () => {
@@ -170,13 +170,13 @@ describe('CosenseOAuthProvider', () => {
 
   it('未知・期限切れのpendingは専用エラーになる', () => {
     const { provider } = build();
-    expect(() => provider.approve('nope', PASSPHRASE, 'ip')).toThrow(PendingNotFoundError);
+    expect(() => provider.approve('nope', { passphrase: PASSPHRASE }, 'ip')).toThrow(PendingNotFoundError);
   });
 
   it('PKCEチャレンジを引き当ててトークンを発行する', async () => {
     const { provider } = build();
     const pendingId = await startAuthorization(provider, { resource: new URL(RESOURCE) });
-    const code = new URL(provider.approve(pendingId, PASSPHRASE, 'ip')).searchParams.get('code')!;
+    const code = new URL(provider.approve(pendingId, { passphrase: PASSPHRASE }, 'ip')).searchParams.get('code')!;
 
     expect(await provider.challengeForAuthorizationCode(client, code)).toBe('challenge-value');
 
@@ -192,7 +192,7 @@ describe('CosenseOAuthProvider', () => {
   it('認可コードは1回しか使えず、再利用でそのクライアントのトークンが失効する', async () => {
     const { provider } = build();
     const pendingId = await startAuthorization(provider);
-    const code = new URL(provider.approve(pendingId, PASSPHRASE, 'ip')).searchParams.get('code')!;
+    const code = new URL(provider.approve(pendingId, { passphrase: PASSPHRASE }, 'ip')).searchParams.get('code')!;
     const tokens = await provider.exchangeAuthorizationCode(client, code);
 
     await expect(provider.exchangeAuthorizationCode(client, code)).rejects.toThrow(/Invalid or expired/);
@@ -202,7 +202,7 @@ describe('CosenseOAuthProvider', () => {
   it('トークン交換時のresource不一致を拒否する', async () => {
     const { provider } = build();
     const pendingId = await startAuthorization(provider);
-    const code = new URL(provider.approve(pendingId, PASSPHRASE, 'ip')).searchParams.get('code')!;
+    const code = new URL(provider.approve(pendingId, { passphrase: PASSPHRASE }, 'ip')).searchParams.get('code')!;
     await expect(
       provider.exchangeAuthorizationCode(client, code, undefined, undefined, new URL('https://evil.example.com/mcp'))
     ).rejects.toThrow(/Unsupported resource/);
@@ -211,7 +211,7 @@ describe('CosenseOAuthProvider', () => {
   it('redirect_uriが認可時と違えば拒否する', async () => {
     const { provider } = build();
     const pendingId = await startAuthorization(provider);
-    const code = new URL(provider.approve(pendingId, PASSPHRASE, 'ip')).searchParams.get('code')!;
+    const code = new URL(provider.approve(pendingId, { passphrase: PASSPHRASE }, 'ip')).searchParams.get('code')!;
     await expect(
       provider.exchangeAuthorizationCode(client, code, undefined, 'https://claude.ai/other')
     ).rejects.toThrow(/redirect_uri does not match/);
@@ -220,7 +220,7 @@ describe('CosenseOAuthProvider', () => {
   it('リフレッシュトークンはローテーションし、旧トークンは使えない', async () => {
     const { provider } = build();
     const pendingId = await startAuthorization(provider);
-    const code = new URL(provider.approve(pendingId, PASSPHRASE, 'ip')).searchParams.get('code')!;
+    const code = new URL(provider.approve(pendingId, { passphrase: PASSPHRASE }, 'ip')).searchParams.get('code')!;
     const first = await provider.exchangeAuthorizationCode(client, code);
 
     const second = await provider.exchangeRefreshToken(client, first.refresh_token!);
@@ -231,7 +231,7 @@ describe('CosenseOAuthProvider', () => {
   it('リフレッシュでスコープを広げられない', async () => {
     const { provider } = build();
     const pendingId = await startAuthorization(provider, { scopes: ['mcp'] });
-    const code = new URL(provider.approve(pendingId, PASSPHRASE, 'ip')).searchParams.get('code')!;
+    const code = new URL(provider.approve(pendingId, { passphrase: PASSPHRASE }, 'ip')).searchParams.get('code')!;
     const tokens = await provider.exchangeAuthorizationCode(client, code);
     await expect(provider.exchangeRefreshToken(client, tokens.refresh_token!, ['mcp', 'admin'])).rejects.toThrow(/Cannot widen scope/);
   });
@@ -251,7 +251,7 @@ describe('CosenseOAuthProvider', () => {
     // RFC 7009 2.1 の SHOULD。片方だけ残ると「取り消したのに使い続けられる」
     const { provider } = build();
     const pendingId = await startAuthorization(provider);
-    const code = new URL(provider.approve(pendingId, PASSPHRASE, 'ip')).searchParams.get('code')!;
+    const code = new URL(provider.approve(pendingId, { passphrase: PASSPHRASE }, 'ip')).searchParams.get('code')!;
     const tokens = await provider.exchangeAuthorizationCode(client, code);
 
     await provider.revokeToken(client, { token: tokens.refresh_token! });
@@ -261,7 +261,7 @@ describe('CosenseOAuthProvider', () => {
   it('アクセストークンを取り消すと、同じ認可のリフレッシュトークンも失効する', async () => {
     const { provider } = build();
     const pendingId = await startAuthorization(provider);
-    const code = new URL(provider.approve(pendingId, PASSPHRASE, 'ip')).searchParams.get('code')!;
+    const code = new URL(provider.approve(pendingId, { passphrase: PASSPHRASE }, 'ip')).searchParams.get('code')!;
     const tokens = await provider.exchangeAuthorizationCode(client, code);
 
     await provider.revokeToken(client, { token: tokens.access_token });
@@ -272,7 +272,7 @@ describe('CosenseOAuthProvider', () => {
     // grantId を引き継がないと、古い世代が取り残されて失効しない
     const { provider } = build();
     const pendingId = await startAuthorization(provider);
-    const code = new URL(provider.approve(pendingId, PASSPHRASE, 'ip')).searchParams.get('code')!;
+    const code = new URL(provider.approve(pendingId, { passphrase: PASSPHRASE }, 'ip')).searchParams.get('code')!;
     const first = await provider.exchangeAuthorizationCode(client, code);
     const second = await provider.exchangeRefreshToken(client, first.refresh_token!);
 
@@ -283,7 +283,7 @@ describe('CosenseOAuthProvider', () => {
   it('取り消したトークンは検証に通らない', async () => {
     const { provider } = build();
     const pendingId = await startAuthorization(provider);
-    const code = new URL(provider.approve(pendingId, PASSPHRASE, 'ip')).searchParams.get('code')!;
+    const code = new URL(provider.approve(pendingId, { passphrase: PASSPHRASE }, 'ip')).searchParams.get('code')!;
     const tokens = await provider.exchangeAuthorizationCode(client, code);
     await provider.revokeToken(client, { token: tokens.access_token });
     await expect(provider.verifyAccessToken(tokens.access_token)).rejects.toThrow();

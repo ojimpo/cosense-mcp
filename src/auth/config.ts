@@ -13,6 +13,7 @@
 
 import { UserDirectory } from './users.js';
 import { UserStore } from './user-store.js';
+import { InviteStore } from './invites.js';
 
 /** アクセストークンの有効期間（秒）。 */
 const DEFAULT_ACCESS_TOKEN_TTL_SEC = 60 * 60;
@@ -40,6 +41,11 @@ export interface OAuthConfig {
    * `MCP_USERS_FILE` が無ければ、環境変数のパスフレーズを持つ利用者が1人だけ入っている。
    */
   users: UserDirectory;
+  /**
+   * 招待の保存先。書き込めるユーザーストア（`MCP_USERS_STORE`）があるときだけ有効。
+   * 未設定なら招待は使えず、利用者は静的な設定でしか増やせない。
+   */
+  invites?: InviteStore;
   /** トークン・クライアント登録の永続化先。未指定ならメモリのみ。 */
   storePath?: string;
   accessTokenTtlSec: number;
@@ -49,6 +55,12 @@ export interface OAuthConfig {
 }
 
 export class OAuthConfigError extends Error {}
+
+/** 同じディレクトリの別ファイル。招待の置き場をユーザーストアに合わせるため。 */
+function siblingPath(filePath: string, name: string): string {
+  const slash = filePath.lastIndexOf('/');
+  return slash === -1 ? name : `${filePath.slice(0, slash)}/${name}`;
+}
 
 function parsePositiveInt(value: string | undefined, fallback: number, label: string): number {
   if (value === undefined || value === '') return fallback;
@@ -118,10 +130,16 @@ export function resolveOAuthConfig(env: NodeJS.ProcessEnv = process.env): OAuthC
     console.error(`[users] writable store at ${usersStorePath}: ${users.size - staticUsers.size} enrolled`);
   }
 
+  // 招待は「登録できる場所」が無いと成立しないので、ユーザーストアとセットで有効になる。
+  const invitePath = env.MCP_INVITE_STORE?.trim() || (usersStorePath ? siblingPath(usersStorePath, 'invites.json') : undefined);
+  const invites = usersStorePath && invitePath ? new InviteStore(invitePath) : undefined;
+  if (invites) console.error(`[invites] enabled, store at ${invitePath}`);
+
   return {
     issuerUrl,
     resourceUrl,
     users,
+    ...(invites ? { invites } : {}),
     ...(storePath ? { storePath } : {}),
     accessTokenTtlSec: parsePositiveInt(env.MCP_OAUTH_ACCESS_TTL, DEFAULT_ACCESS_TOKEN_TTL_SEC, 'MCP_OAUTH_ACCESS_TTL'),
     refreshTokenTtlSec: parsePositiveInt(env.MCP_OAUTH_REFRESH_TTL, DEFAULT_REFRESH_TOKEN_TTL_SEC, 'MCP_OAUTH_REFRESH_TTL'),

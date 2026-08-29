@@ -35,6 +35,7 @@ const STYLE = `
      DOM順を戻すと、パスフレーズ欄でEnterを押したときにDenyが送信される。 */
   button[value="deny"] { order: -1; }
   .hint { font-size: 0.8rem; opacity: 0.7; margin: 0.35rem 0 1rem; }
+  .optional { font-weight: 400; opacity: 0.65; }
   .field { margin-bottom: 0.25rem; }
   .error { padding: 0.6rem 0.8rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.9rem;
            background: color-mix(in srgb, #dc2626 15%, transparent); color: #dc2626; }
@@ -57,6 +58,8 @@ function layout(title: string, body: string): string {
 
 export interface ConsentPageParams {
   pendingId: string;
+  /** 招待を受け付けるサーバーかどうか。受け付けないなら欄自体を出さない。 */
+  invitesEnabled?: boolean;
   clientName: string;
   redirectUri: string;
   scopes: string[];
@@ -76,6 +79,18 @@ export function renderConsentPage(params: ConsentPageParams): string {
   const errorBlock = params.error ? `<p class="error">${escapeHtml(params.error)}</p>` : '';
   const scopes = params.scopes.length > 0 ? params.scopes.join(', ') : '(none)';
 
+  // 招待の欄は、招待を受け付けるサーバーでだけ出す。使えない入力欄を並べると、
+  // 「どちらを埋めればいいのか」を利用者に考えさせることになる。
+  const inviteBlock = params.invitesEnabled
+    ? `<label for="invite_code">Invite code <span class="optional">— only if you were given one</span></label>
+  <input class="field" id="invite_code" name="invite_code" type="text" autocomplete="off"
+         spellcheck="false" autocapitalize="none" placeholder="kfp-7q2-xm4">
+  <p class="hint">Leave this empty if you already have an account here.</p>`
+    : '';
+  const passphraseHint = params.invitesEnabled
+    ? 'With an invite code: choose a passphrase (12+ characters) — you will use it every time you reconnect. Otherwise: the one you already use.'
+    : 'Given to you by whoever runs this server.';
+
   return layout(
     'Authorize access',
     `
@@ -89,9 +104,10 @@ ${errorBlock}
 </dl>
 <form method="post" action="${escapeHtml(params.actionPath)}" autocomplete="off">
   <input type="hidden" name="pending_id" value="${escapeHtml(params.pendingId)}">
+  ${inviteBlock}
   <label for="passphrase">Passphrase</label>
   <input class="field" id="passphrase" name="passphrase" type="password" autocomplete="current-password" required autofocus>
-  <p class="hint">Given to you by whoever runs this server.</p>
+  <p class="hint">${passphraseHint}</p>
   <label for="sid">Cosense SID</label>
   <input class="field" id="sid" name="sid" type="password" autocomplete="off" spellcheck="false">
   <p class="hint">The <code>connect.sid</code> cookie from scrapbox.io — this is what lets the server act as you.
