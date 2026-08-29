@@ -8,7 +8,7 @@ import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import { resolveOAuthConfig, type OAuthConfig } from './auth/config.js';
-import { setupOAuth } from './auth/index.js';
+import { setupOAuth, type OAuthWiring } from './auth/index.js';
 import { OriginValidator } from './auth/origin.js';
 
 /**
@@ -32,6 +32,11 @@ export interface HttpServerOptions {
   trustProxy?: string | number | boolean | undefined;
   /** CORS を許可するオリジン。未指定なら全許可（Bearer 必須なので Cookie 経由の悪用は無い）。 */
   allowedOrigins?: string[] | undefined;
+  /**
+   * OAuth の配線が済んだ時点で呼ばれる。管理画面が同じトークンストアを見るために要る
+   * ——別インスタンスを作ると、発行済みの認可が見えない管理画面ができあがる。
+   */
+  onAuthWiring?: ((wiring: OAuthWiring) => void) | undefined;
 }
 
 function buildCorsOptions(allowedOrigins: string[] | undefined): CorsOptions {
@@ -103,6 +108,7 @@ export function createApp(createServer: ServerFactory, options: HttpServerOption
     const wiring = setupOAuth(oauth);
     for (const router of wiring.routers) app.use(router);
     requireAuth = wiring.requireAuth;
+    options.onAuthWiring?.(wiring);
     console.error(`[oauth] enabled: issuer=${oauth.issuerUrl.origin} resource=${oauth.resourceUrl.href}`);
   } else if (authToken) {
     requireAuth = (req: Request, res: Response, next) => {

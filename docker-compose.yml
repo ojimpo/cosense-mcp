@@ -3,6 +3,10 @@ services:
     build: .
     ports:
       - "4100:4100"
+      # 管理画面。**Cloudflare Tunnel に通さないこと** — 通した瞬間に
+      # ログイン画面がインターネットに晒される。既定は localhost だけに開く。
+      # スマホから触るなら MCP_ADMIN_BIND に Tailscale の IP を入れる
+      - "${MCP_ADMIN_BIND:-127.0.0.1}:4101:4101"
     environment:
       - TRANSPORT=http
       - PORT=4100
@@ -24,6 +28,11 @@ services:
       - COSENSE_ENABLE_DELETE=${COSENSE_ENABLE_DELETE:-}
       - COSENSE_NOTATION_CONFIG=/app/notation.config.json
       - COSENSE_NOTATION_PAGE=${COSENSE_NOTATION_PAGE:-}
+      # 招待から登録された利用者の置き場。未設定なら招待は無効（静的な設定のみ）
+      - MCP_USERS_STORE=${MCP_USERS_STORE:-}
+      - MCP_USERS_FILE=${MCP_USERS_FILE:-}
+      # 管理画面のポート。未設定なら管理画面は起動しない
+      - MCP_ADMIN_PORT=${MCP_ADMIN_PORT:-}
     volumes:
       - ./notation.config.json:/app/notation.config.json:ro
       - oauth-data:/data

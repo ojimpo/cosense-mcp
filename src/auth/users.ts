@@ -272,6 +272,34 @@ export class UserDirectory {
     return this.entries.map((entry) => entry.profile.id);
   }
 
+  /** 管理画面に出す一覧。パスフレーズもSIDも含まない。 */
+  describe(): Array<{
+    id: string;
+    source: 'static' | 'enrolled';
+    projects: string[];
+    enableDelete: boolean;
+    sidSource: 'consent' | 'env';
+    createdAt?: number;
+    lastSeenAt?: number;
+    inviteId?: string;
+  }> {
+    const stored = new Map((this.store?.list() ?? []).map((record) => [record.id, record]));
+    return this.entries.map((entry) => {
+      const record = stored.get(entry.profile.id);
+      const isStatic = this.isStatic(entry.profile.id);
+      return {
+        id: entry.profile.id,
+        source: isStatic ? ('static' as const) : ('enrolled' as const),
+        projects: entry.profile.projects,
+        enableDelete: entry.profile.enableDelete,
+        sidSource: entry.profile.sidSource,
+        ...(record?.createdAt !== undefined ? { createdAt: record.createdAt } : {}),
+        ...(record?.lastSeenAt !== undefined ? { lastSeenAt: record.lastSeenAt } : {}),
+        ...(record?.inviteId !== undefined ? { inviteId: record.inviteId } : {}),
+      };
+    });
+  }
+
   /** 静的な設定に居る利用者か（保存先から消せない＝招待では触れない）。 */
   isStatic(id: string): boolean {
     return this.staticEntries.some((entry) => entry.profile.id === id);

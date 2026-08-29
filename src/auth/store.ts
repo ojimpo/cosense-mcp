@@ -183,6 +183,52 @@ export class OAuthStore {
     return Object.keys(this.data.sids).length;
   }
 
+  /**
+   * 利用者ごとの認可の様子。**SIDの中身はここからも出ない** —
+   * 復号鍵はトークンからしか作れないので、暗号文が「有るか無いか」までしか答えられない。
+   * 運用者が見たいのは「誰が登録して使っているか」であって、それはこれで足りる。
+   */
+  summarizeUsers(): Map<string, { grants: number; hasSid: boolean; clientIds: string[]; expiresAt: number }> {
+    const byUser = new Map<string, { grantIds: Set<string>; clientIds: Set<string>; expiresAt: number }>();
+    for (const bucket of [this.data.accessTokens, this.data.refreshTokens]) {
+      for (const record of Object.values(bucket)) {
+        const userId = record.userId ?? 'default';
+        const entry = byUser.get(userId) ?? { grantIds: new Set(), clientIds: new Set(), expiresAt: 0 };
+        if (record.grantId !== undefined) entry.grantIds.add(record.grantId);
+        entry.clientIds.add(record.clientId);
+        entry.expiresAt = Math.max(entry.expiresAt, record.expiresAt);
+        byUser.set(userId, entry);
+      }
+    }
+    const summary = new Map<string, { grants: number; hasSid: boolean; clientIds: string[]; expiresAt: number }>();
+    for (const [userId, entry] of byUser) {
+      summary.set(userId, {
+        grants: entry.grantIds.size,
+        hasSid: [...entry.grantIds].some((grantId) => grantId in this.data.sids),
+        clientIds: [...entry.clientIds],
+        expiresAt: entry.expiresAt,
+      });
+    }
+    return summary;
+  }
+
+  /** 利用者に紐づく認可をすべて落とす。暗号化された SID も道連れになる。 */
+  revokeUserTokens(userId: string): number {
+    const grantIds = new Set<string>();
+    for (const bucket of [this.data.accessTokens, this.data.refreshTokens]) {
+      for (const [key, record] of Object.entries(bucket)) {
+        if ((record.userId ?? 'default') === userId) {
+          if (record.grantId !== undefined) grantIds.add(record.grantId);
+          delete bucket[key];
+        }
+      }
+    }
+    for (const grantId of grantIds) delete this.data.sids[grantId];
+    this.pruneOrphanedSids();
+    this.flush();
+    return grantIds.size;
+  }
+
   // --- クライアント登録 ---
 
   getClient(clientId: string): OAuthClientInformationFull | undefined {

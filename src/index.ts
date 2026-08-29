@@ -576,6 +576,20 @@ if (transport === 'http') {
     .map((origin) => origin.trim())
     .filter(Boolean);
 
+  // 管理画面は MCP とは別のポート。Cloudflare Tunnel が通すのは MCP 側だけなので、
+  // ここはインターネットから到達できず、LAN と Tailscale からしか開けない。
+  const adminPort = process.env.MCP_ADMIN_PORT ? parseInt(process.env.MCP_ADMIN_PORT, 10) : undefined;
+  const onAuthWiring = adminPort && oauth
+    ? async (wiring: { store: import('./auth/store.js').OAuthStore }) => {
+        const { startAdminServer } = await import('./admin-server.js');
+        startAdminServer(adminPort, {
+          config: oauth,
+          store: wiring.store,
+          ...(trustProxy ? { trustProxy: /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy } : {}),
+        });
+      }
+    : undefined;
+
   startHttpServer((authInfo) => createServer(resolveSessionConfig(authInfo, oauth?.users, sessionDefaults())), {
     port,
     ...(authToken ? { authToken } : {}),
@@ -583,6 +597,7 @@ if (transport === 'http') {
     allowUnauthenticated: process.env.MCP_ALLOW_UNAUTHENTICATED === 'true',
     ...(trustProxy ? { trustProxy: /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy } : {}),
     ...(allowedOrigins && allowedOrigins.length > 0 ? { allowedOrigins } : {}),
+    ...(onAuthWiring ? { onAuthWiring } : {}),
   });
 } else {
   // デフォルト: stdio transport
