@@ -73,11 +73,12 @@ export function renderAdminLogin(error?: string): string {
 <p class="sub">Invite people and see who is using this server.</p>
 ${error ? `<p class="error">${escapeHtml(error)}</p>` : ''}
 <form method="post" action="/login">
-  <!-- パスワードマネージャは「ユーザー名＋パスワード」の対で保存対象を判定する。
-       この画面に入れるのは運用者だけなので、その旨を表示専用の欄で対にする。
-       name が無いので送信はされない。 -->
-  <label for="account">Account</label>
-  <input id="account" type="text" autocomplete="username" value="operator" readonly tabindex="-1">
+  <!-- パスワードマネージャの保存判定には「ユーザー名＋パスワード」の対が要る。
+       readonly / tabindex="-1" だと入力できない欄として候補から外れるので、
+       普通の編集可能な欄にしてある（2026-08-29 に readonly 版が実測で失敗した）。
+       サーバーは username を読まない。 -->
+  <label for="username">Account</label>
+  <input id="username" name="username" type="text" autocomplete="username" value="operator" spellcheck="false">
   <label for="passphrase">Operator passphrase</label>
   <input id="passphrase" name="passphrase" type="password" autocomplete="current-password" required autofocus>
   <button class="primary" type="submit">Sign in</button>

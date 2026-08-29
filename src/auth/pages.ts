@@ -119,12 +119,14 @@ ${errorBlock}
 <form method="post" action="${escapeHtml(params.actionPath)}">
   <input type="hidden" name="pending_id" value="${escapeHtml(params.pendingId)}">
   <!-- パスワードマネージャは「ユーザー名＋パスワード」の対で保存対象を判定する。
-       このサーバーにユーザー名の概念は無いので、どのサーバーの資格情報かが分かる
-       readonly の欄を置いて対にする。送信はされない（name 無し）。 -->
-  <label for="account">Server</label>
-  <input class="field" id="account" type="text" autocomplete="username"
-         value="${escapeHtml(params.resourceHost)}" readonly tabindex="-1">
-  <p class="hint">Shown so your password manager can file the passphrase under this server.</p>
+       このサーバーにユーザー名の概念は無いが、対が無いと保存を提案してこない。
+       readonly や tabindex="-1" にすると「入力できない欄」としてユーザー名候補から
+       外されるので、**普通の編集可能な入力欄**にしてある（2026-08-29、readonly版が
+       1Passwordに拾われずに実測で失敗した）。サーバーは username を読まない。 -->
+  <label for="username">Server</label>
+  <input class="field" id="username" name="username" type="text" autocomplete="username"
+         value="${escapeHtml(params.resourceHost)}" spellcheck="false">
+  <p class="hint">Just a label for your password manager. Changing it does nothing.</p>
   ${inviteBlock}
   <label for="passphrase">Passphrase</label>
   <input class="field" id="passphrase" name="passphrase" type="password" autocomplete="current-password" required autofocus>
