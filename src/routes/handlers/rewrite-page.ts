@@ -12,6 +12,11 @@ export interface RewritePageParams {
   format?: "markdown" | "scrapbox" | undefined;
   dryRun?: boolean | undefined;
   compact?: boolean | undefined;
+  /**
+   * この呼び出しで破壊的操作を許すか。利用者ごとに可否が違うので、
+   * 呼び出し側（ディスパッチ）が明示的に渡す。未指定なら環境変数に従う。
+   */
+  enableDelete?: boolean | undefined;
 }
 
 // ドライランやレスポンスで返す冒頭行の数
@@ -32,7 +37,7 @@ export async function handleRewritePage(
 
   try {
     // ツール登録側でもゲートしているが、CLIや直接呼び出しに備えて実行時にも確認する
-    if (!isDeleteEnabled()) {
+    if (!(params.enableDelete ?? isDeleteEnabled())) {
       return formatError(
         'Page rewrite is disabled. Set COSENSE_ENABLE_DELETE=true to enable rewrite_page.',
         errorDetails(),

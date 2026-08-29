@@ -7,6 +7,11 @@ export interface DeletePageParams {
   projectName?: string | undefined;
   dryRun?: boolean | undefined;
   compact?: boolean | undefined;
+  /**
+   * この呼び出しで破壊的操作を許すか。利用者ごとに可否が違うので、
+   * 呼び出し側（ディスパッチ）が明示的に渡す。未指定なら環境変数に従う。
+   */
+  enableDelete?: boolean | undefined;
 }
 
 // ドライランで返す冒頭行の数
@@ -31,7 +36,7 @@ export async function handleDeletePage(
 
   try {
     // ツール登録側でもゲートしているが、CLIや直接呼び出しに備えて実行時にも確認する
-    if (!isDeleteEnabled()) {
+    if (!(params.enableDelete ?? isDeleteEnabled())) {
       return formatError(
         'Page deletion is disabled. Set COSENSE_ENABLE_DELETE=true to enable delete_page.',
         errorDetails(),

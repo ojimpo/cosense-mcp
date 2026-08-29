@@ -6,6 +6,10 @@
  * より広いことが多く、LLM が誤って別プロジェクトを指したときの歯止めが無い。
  *
  * 未設定なら従来どおり無制限（後方互換）。絞りたい人だけ絞る、オプトインの安全策。
+ *
+ * 判定関数は環境変数ではなく「許可リストそのもの」を受け取る。利用者ごとに許可範囲が
+ * 違う以上、プロセス全体で1つの env を読みに行く形では表現できないため。
+ * 環境変数から読むのは `getProjectAllowList` の役目に閉じてある。
  */
 
 /** 許可リストを環境変数から読む。未設定・空なら undefined（＝無制限）。 */
@@ -23,10 +27,9 @@ export function getProjectAllowList(env: NodeJS.ProcessEnv = process.env): strin
 export function isProjectAllowed(
   projectName: string,
   defaultProjectName: string | undefined,
-  env: NodeJS.ProcessEnv = process.env
+  allowList: string[] | undefined
 ): boolean {
-  const allowList = getProjectAllowList(env);
-  if (!allowList) return true;
+  if (!allowList || allowList.length === 0) return true;
   if (defaultProjectName && projectName === defaultProjectName) return true;
   return allowList.includes(projectName);
 }
@@ -37,10 +40,13 @@ export function isProjectAllowed(
  */
 export function projectNotAllowedMessage(
   projectName: string,
-  env: NodeJS.ProcessEnv = process.env
+  allowList: string[] | undefined,
+  defaultProjectName?: string | undefined
 ): string {
-  const allowList = getProjectAllowList(env) ?? [];
-  return `Project '${projectName}' is not allowed. COSENSE_PROJECT_ALLOW_LIST permits: ${allowList.join(', ')}`;
+  // 既定プロジェクトは暗黙に許可されるので、案内にも含めないと嘘になる。
+  const permitted = [...(defaultProjectName ? [defaultProjectName] : []), ...(allowList ?? [])];
+  const unique = permitted.filter((name, index) => permitted.indexOf(name) === index);
+  return `Project '${projectName}' is not allowed. Permitted projects: ${unique.join(', ')}`;
 }
 
 /**
@@ -50,9 +56,9 @@ export function projectNotAllowedMessage(
 export function checkProjectAllowed(
   projectName: string | undefined,
   defaultProjectName: string | undefined,
-  env: NodeJS.ProcessEnv = process.env
+  allowList: string[] | undefined
 ): string | undefined {
   if (!projectName) return undefined;
-  if (isProjectAllowed(projectName, defaultProjectName, env)) return undefined;
-  return projectNotAllowedMessage(projectName, env);
+  if (isProjectAllowed(projectName, defaultProjectName, allowList)) return undefined;
+  return projectNotAllowedMessage(projectName, allowList, defaultProjectName);
 }

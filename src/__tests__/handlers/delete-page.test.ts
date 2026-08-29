@@ -75,6 +75,19 @@ describe('handleDeletePage', () => {
       expect(mockedPatch).not.toHaveBeenCalled();
     });
 
+    test('呼び出し側が渡した可否が環境変数より優先されること', async () => {
+      // 利用者ごとに破壊的ツールの可否が違うので、環境変数で有効でも
+      // その接続に許していなければ実行させない
+      process.env.COSENSE_ENABLE_DELETE = 'true';
+      const denied = await handleDeletePage(mockProjectName, mockCosenseSid, {
+        pageTitle: 'Test Page',
+        enableDelete: false,
+      });
+      expect((denied as { isError?: boolean }).isError).toBe(true);
+      expect(denied.content[0]!.text).toContain('Page deletion is disabled');
+      expect(mockedCosense.getPage).not.toHaveBeenCalled();
+    });
+
     test('isDeleteEnabledが環境変数の状態を反映すること', () => {
       process.env.COSENSE_ENABLE_DELETE = 'true';
       expect(isDeleteEnabled()).toBe(true);

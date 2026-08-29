@@ -11,7 +11,11 @@ import { resolveOAuthConfig, type OAuthConfig } from './auth/config.js';
 import { setupOAuth } from './auth/index.js';
 import { OriginValidator } from './auth/origin.js';
 
-type ServerFactory = () => Server;
+/**
+ * セッションごとの MCP サーバーを作る。認証済みなら、その接続の `AuthInfo` を渡す
+ * ——利用者ごとに SID・許可プロジェクト・使えるツールが変わるため。
+ */
+type ServerFactory = (authInfo?: AuthInfo) => Server;
 
 export interface HttpServerOptions {
   port: number;
@@ -195,7 +199,7 @@ export function createApp(createServer: ServerFactory, options: HttpServerOption
           }
         };
 
-        const mcpServer = createServer();
+        const mcpServer = createServer((req as Request & { auth?: AuthInfo }).auth);
         await mcpServer.connect(transport as Parameters<typeof mcpServer.connect>[0]);
         await transport.handleRequest(req, res, req.body);
         return;

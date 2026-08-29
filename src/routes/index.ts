@@ -30,10 +30,14 @@ export function setupRoutes(
     projectName: string;
     cosenseSid?: string | undefined;
     toolSuffix?: string | undefined;
+    /** 触れるプロジェクト。未指定なら無制限（従来どおり）。 */
+    allowedProjects?: string[] | undefined;
+    /** 破壊的ツールを許すか。未指定なら環境変数に従う。 */
+    enableDelete?: boolean | undefined;
   }
 ) {
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const { projectName, cosenseSid, toolSuffix } = config;
+    const { projectName, cosenseSid, toolSuffix, allowedProjects, enableDelete } = config;
     const normalizedToolName = normalizeToolName(request.params.name, toolSuffix);
 
     // 操作対象プロジェクトの制限は、ツールごとではなくここで一度だけ見る。
@@ -41,7 +45,7 @@ export function setupRoutes(
     // 上書きが入ってくるのはこの境界なので、ここで止めれば全ツールが漏れなく守られる。
     const requestedProject = request.params.arguments?.projectName;
     if (typeof requestedProject === 'string') {
-      const denied = checkProjectAllowed(requestedProject, projectName);
+      const denied = checkProjectAllowed(requestedProject, projectName, allowedProjects);
       if (denied) {
         return formatError(denied, {
           Operation: normalizedToolName,
@@ -159,6 +163,7 @@ export function setupRoutes(
             pageTitle: String(request.params.arguments?.pageTitle),
             projectName: request.params.arguments?.projectName as string | undefined,
             dryRun: request.params.arguments?.dryRun === true,
+            ...(enableDelete !== undefined ? { enableDelete } : {}),
           }
         );
 
@@ -172,6 +177,7 @@ export function setupRoutes(
             projectName: request.params.arguments?.projectName as string | undefined,
             format: (request.params.arguments?.format as "markdown" | "scrapbox" | undefined) ?? undefined,
             dryRun: request.params.arguments?.dryRun === true,
+            ...(enableDelete !== undefined ? { enableDelete } : {}),
           }
         );
 

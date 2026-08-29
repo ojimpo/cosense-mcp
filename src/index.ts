@@ -30,6 +30,7 @@ import { setupRoutes } from './routes/index.js';
 import { isDeleteEnabled } from './routes/handlers/delete-page.js';
 import { DEFAULT_LIST_LIMIT, DEFAULT_LIST_SORT } from './routes/handlers/list-pages.js';
 import { getProjectAllowList } from './utils/project.js';
+import { defaultSession, resolveSessionConfig, type SessionConfig, type SessionDefaults } from './session.js';
 
 // 環境変数のデフォルト値と検証用の定数
 const FETCH_PAGE_LIMIT = 100;  // 固定で100件取得
@@ -125,8 +126,18 @@ const projectNameDescription = (() => {
   return `${base} This server may only touch these projects: ${allowed.join(', ')}.`;
 })();
 
+/** 環境変数だけから決まる既定値。stdio と、利用者が特定できない接続で使う。 */
+function sessionDefaults(): SessionDefaults {
+  return {
+    projectName: projectName!,
+    cosenseSid: cosenseSid ?? undefined,
+    allowedProjects: getProjectAllowList(),
+    enableDelete: isDeleteEnabled(),
+  };
+}
+
 // サーバー生成ファクトリ（HTTP transportでセッションごとに新しいサーバーを作成するため関数化）
-function createServer(): Server {
+function createServer(session: SessionConfig = defaultSession(sessionDefaults())): Server {
   const server = new Server(
     {
       name: "scrapbox-cosense-mcp",
@@ -146,8 +157,11 @@ function createServer(): Server {
   );
 
   server.setRequestHandler(ListResourcesRequestSchema, async () => {
+    // resources は起動時に既定プロジェクトから一度だけ取得したもの。
+    // 利用者ごとに設定が違う接続へ返すと、その人が触れないプロジェクトの
+    // ページ一覧をそのまま渡すことになる。
     return {
-      resources,
+      resources: session.isDefaultSession ? resources : [],
     };
   });
 
@@ -155,7 +169,7 @@ function createServer(): Server {
     const url = new URL(request.params.uri);
     const title = decodeURIComponent(url.pathname.replace(/^\//, ""));
 
-    const getPageResult = await getPage(projectName!, title, cosenseSid);
+    const getPageResult = await getPage(session.projectName, title, session.cosenseSid);
     if (!getPageResult) {
       throw new Error(`Page ${title} not found`);
     }
@@ -546,9 +560,11 @@ function createServer(): Server {
 
   // ルートのセットアップ
   setupRoutes(server, {
-    projectName: projectName!,
-    cosenseSid: cosenseSid ?? undefined,
+    projectName: session.projectName,
+    cosenseSid: session.cosenseSid,
     toolSuffix: TOOL_SUFFIX,
+    allowedProjects: session.allowedProjects,
+    enableDelete: session.enableDelete,
   });
 
   return server;
@@ -569,7 +585,7 @@ if (transport === 'http') {
     .map((origin) => origin.trim())
     .filter(Boolean);
 
-  startHttpServer(createServer, {
+  startHttpServer((authInfo) => createServer(resolveSessionConfig(authInfo, oauth?.users, sessionDefaults())), {
     port,
     ...(authToken ? { authToken } : {}),
     ...(oauth ? { oauth } : {}),
