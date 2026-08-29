@@ -36,6 +36,14 @@ const STYLE = `
   button[value="deny"] { order: -1; }
   .hint { font-size: 0.8rem; opacity: 0.7; margin: 0.35rem 0 1rem; }
   .optional { font-weight: 400; opacity: 0.65; }
+  details { margin: 0.35rem 0 1rem; font-size: 0.8rem; }
+  summary { cursor: pointer; opacity: 0.8; padding: 0.2rem 0; }
+  details ol { margin: 0.6rem 0 0; padding-left: 1.2rem; line-height: 1.7; }
+  details li { margin-bottom: 0.2rem; }
+  details p { margin: 0.6rem 0 0; opacity: 0.8; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+         background: color-mix(in srgb, CanvasText 8%, transparent); padding: 0.05rem 0.25rem; border-radius: 3px; }
+  .warn { color: #b45309; }
   .field { margin-bottom: 0.25rem; }
   .error { padding: 0.6rem 0.8rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.9rem;
            background: color-mix(in srgb, #dc2626 15%, transparent); color: #dc2626; }
@@ -110,9 +118,32 @@ ${errorBlock}
   <p class="hint">${passphraseHint}</p>
   <label for="sid">Cosense SID</label>
   <input class="field" id="sid" name="sid" type="password" autocomplete="off" spellcheck="false">
-  <p class="hint">The <code>connect.sid</code> cookie from scrapbox.io — this is what lets the server act as you.
-  It is stored encrypted under your access token, so the server operator cannot read it back.
-  Leave blank only if the server already holds a SID for your account.</p>
+  <p class="hint">The <code>connect.sid</code> cookie from scrapbox.io. Leave blank only if the server
+  already holds a SID for your account.</p>
+  <details>
+    <summary>How do I find it?</summary>
+    <ol>
+      <li>Open <code>https://scrapbox.io</code> in a browser and make sure you are signed in.</li>
+      <li>Open the developer tools (<code>F12</code>, or <code>⌥⌘I</code> on a Mac).
+          In Safari you have to enable the Develop menu first.</li>
+      <li>Go to <strong>Application</strong> (Chrome, Edge) or <strong>Storage</strong> (Firefox, Safari),
+          then <strong>Cookies</strong> → <code>https://scrapbox.io</code>.</li>
+      <li>Find the row named <code>connect.sid</code> and copy its <strong>Value</strong>.
+          It starts with <code>s%3A</code>.</li>
+    </ol>
+    <p>Signing out of Scrapbox invalidates it, and you will need to paste a new one here.</p>
+  </details>
+  <details>
+    <summary>What does the server do with it?</summary>
+    <p>This cookie <strong>is</strong> your Scrapbox session — anything you can do, it can do. There is no
+    narrower credential to give; Cosense has no API key or per-project token.</p>
+    <p>It is stored encrypted under a key derived from your own access token, which this server keeps only
+    as a hash. A leaked backup or database file therefore yields nothing. <span class="warn">This is not
+    end-to-end encryption:</span> the server must hold the plaintext at the moment it calls Cosense on your
+    behalf, so whoever runs it could read it by changing the code. Only give this to someone you trust
+    with your account.</p>
+    <p>Every page you create or edit is recorded in Cosense as <strong>you</strong>, not as the server owner.</p>
+  </details>
   <div class="actions">
     <button type="submit" name="action" value="approve">Approve</button>
     <!-- 拒否にパスフレーズは要らないので required の検証を飛ばす -->
