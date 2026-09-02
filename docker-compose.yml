@@ -8,6 +8,12 @@ services:
       # スマホから触るなら MCP_ADMIN_BIND に Tailscale の IP を入れる
       - "${MCP_ADMIN_BIND:-127.0.0.1}:${MCP_ADMIN_PORT:-4103}:${MCP_ADMIN_PORT:-4103}"
     environment:
+      # **日付はプロセスのローカル時刻で整形される**（`formatYmd` が getFullYear/
+      # getMonth/getDate を使う）。コンテナは既定で UTC なので、指定しないと
+      # get_page の `Created:` / `Updated:` が JST から最大1日ずれる。
+      # 実測: 2026-04-19 05:55 JST 作成のページが `Created: 2026/4/18` と出た。
+      # 00:00〜09:00 JST に作ったページが全部前日になる（1日の 37.5%）。
+      - TZ=${TZ:-Asia/Tokyo}
       - TRANSPORT=http
       - PORT=4100
       - COSENSE_PROJECT_NAME=${COSENSE_PROJECT_NAME}

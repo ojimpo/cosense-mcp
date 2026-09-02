@@ -25,6 +25,18 @@ worldnine/scrapbox-cosense-mcp のフォーク。Claude.ai Custom Connector対�
   パスフレーズは `.env` の `MCP_OAUTH_PASSPHRASE`
 - クライアント登録とトークンは named volume `oauth-data` の `/data/oauth-store.json`。
   **`docker compose down -v` を打つと全クライアントの再認可が必要になる**ので、`-v` は付けない
+- **`TZ=Asia/Tokyo` を必ず渡す**（2026-09-02）。`docker-compose.yml` の既定値。
+  `formatYmd` が `getFullYear` / `getMonth` / `getDate`（**プロセスのローカル時刻**）を使うので、
+  TZ 未設定のコンテナ（＝UTC）だと `get_page` の `Created:` / `Updated:` が JST から1日ずれる
+  - **実測: `2026-04-19 05:55 JST` 作成のページが `Created: 2026/4/18` と出ていた。**
+    JST は UTC+9 なので、**00:00〜09:00 JST に作ったページは全部前日になる**（1日の 37.5%）
+  - **静かに間違うのが厄介。** 日付は出るし、もっともらしい値なので気づけない。
+    LLM にその日付を使わせると、そのまま誤った日付が下流に流れる
+  - 見つかったのは [cosense-publish](https://github.com/ojimpo/cosense-publish) 側の
+    「公開日 < 作成日」チェックが止めたから。**ずれが必ず「1日前」に倒れるので、あの網に必ずかかる**
+  - **フォーク元（`worldnine/scrapbox-cosense-mcp`）の `formatYmd` も同一**だが、あちらは
+    Docker を持たない（Docker 化はこのフォークだけ）ので、ホストの TZ に従って正しく出る。
+    **上流のバグではなく、このフォークのコンテナ設定の穴だった**
 - ロールバック用: イメージ `cosense-mcp-cosense-mcp:rollback-20260824`、`.env.bak.20260824`
 - **`COSENSE_ENABLE_DELETE=true`（2026-08-24 有効化）。** `delete_page` / `rewrite_page` が
   `tools/list` に出ている（13ツール）。Claude.ai 側は `Delete page` を「都度確認」に自動分類した。
