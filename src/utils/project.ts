@@ -9,13 +9,18 @@
  * 絞るオプトインの安全策で、環境変数は呼び出しごとに読む。
  */
 
-/** 許可リストを環境変数から読む。未設定・空なら undefined（＝無制限）。 */
+/**
+ * 許可リストを環境変数から読む。**未設定のときだけ** undefined（＝無制限）。
+ *
+ * 設定されていれば、トリム後に名前が1つも残らなくても（`""` や `",,,"`）空配列を返して
+ * 制限モードに入る。変数を書いた人は制限したい意図なので、「設定したつもりで無制限」より
+ * 「既定プロジェクトだけ許可」に倒すほうが安全なため。
+ */
 export function getProjectAllowList(): string[] | undefined {
-  const raw = process.env.COSENSE_PROJECT_ALLOW_LIST?.trim();
-  if (!raw) return undefined;
+  const raw = process.env.COSENSE_PROJECT_ALLOW_LIST;
+  if (raw === undefined) return undefined;
   // カンマ区切りの各要素は前後の空白をトリムし、空要素は無視する
-  const list = raw.split(',').map(name => name.trim()).filter(Boolean);
-  return list.length > 0 ? list : undefined;
+  return raw.split(',').map(name => name.trim()).filter(Boolean);
 }
 
 /**
@@ -55,7 +60,9 @@ export function projectNotAllowedMessage(projectName: string): string {
     ...(getProjectAllowList() ?? []),
   ];
   const unique = permitted.filter((name, index) => permitted.indexOf(name) === index);
-  return `Project '${projectName}' is not allowed by COSENSE_PROJECT_ALLOW_LIST. Permitted projects: ${unique.join(', ')}`;
+  // 実質空の許可リストで COSENSE_PROJECT_NAME も無いと、許可されるものが1つも無い
+  const listed = unique.length > 0 ? unique.join(', ') : '(none)';
+  return `Project '${projectName}' is not allowed by COSENSE_PROJECT_ALLOW_LIST. Permitted projects: ${listed}`;
 }
 
 /**

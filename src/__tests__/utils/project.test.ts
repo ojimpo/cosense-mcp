@@ -32,9 +32,14 @@ describe('COSENSE_PROJECT_ALLOW_LIST', () => {
       expect(getProjectAllowList()).toBeUndefined();
     });
 
-    test('空文字・空白のみなら undefined を返すこと', () => {
+    test('空白のみなら空配列を返すこと（設定されている以上は制限モード）', () => {
       process.env.COSENSE_PROJECT_ALLOW_LIST = '   ';
-      expect(getProjectAllowList()).toBeUndefined();
+      expect(getProjectAllowList()).toEqual([]);
+    });
+
+    test('空文字なら空配列を返すこと', () => {
+      process.env.COSENSE_PROJECT_ALLOW_LIST = '';
+      expect(getProjectAllowList()).toEqual([]);
     });
 
     test('カンマ区切りを分割すること', () => {
@@ -47,9 +52,9 @@ describe('COSENSE_PROJECT_ALLOW_LIST', () => {
       expect(getProjectAllowList()).toEqual(['alpha', 'beta']);
     });
 
-    test('カンマだけなら undefined を返すこと', () => {
+    test('カンマだけなら空配列を返すこと', () => {
       process.env.COSENSE_PROJECT_ALLOW_LIST = ',,,';
-      expect(getProjectAllowList()).toBeUndefined();
+      expect(getProjectAllowList()).toEqual([]);
     });
 
     test('呼び出しごとに環境変数を読み直すこと', () => {
@@ -79,6 +84,19 @@ describe('COSENSE_PROJECT_ALLOW_LIST', () => {
     test('既定プロジェクトはリストに書かれていなくても許可されること', () => {
       process.env.COSENSE_PROJECT_ALLOW_LIST = 'alpha';
       expect(isProjectAllowed('default-project')).toBe(true);
+    });
+
+    test('実質空の許可リストなら既定プロジェクトだけが許可されること', () => {
+      // 「設定したつもりで無制限」より「既定プロジェクトだけ許可」に倒す
+      process.env.COSENSE_PROJECT_ALLOW_LIST = ',,,';
+      expect(isProjectAllowed('default-project')).toBe(true);
+      expect(isProjectAllowed('alpha')).toBe(false);
+    });
+
+    test('空文字の許可リストでも制限がかかること', () => {
+      process.env.COSENSE_PROJECT_ALLOW_LIST = '';
+      expect(isProjectAllowed('default-project')).toBe(true);
+      expect(isProjectAllowed('alpha')).toBe(false);
     });
 
     test('大文字小文字を区別すること', () => {
@@ -114,6 +132,12 @@ describe('COSENSE_PROJECT_ALLOW_LIST', () => {
     test('暗黙に許可される既定プロジェクトを一覧に含めること', () => {
       process.env.COSENSE_PROJECT_ALLOW_LIST = 'alpha';
       expect(projectNotAllowedMessage('gamma')).toContain('default-project');
+    });
+
+    test('許可されるものが1つも無ければ (none) と出すこと', () => {
+      delete process.env.COSENSE_PROJECT_NAME;
+      process.env.COSENSE_PROJECT_ALLOW_LIST = ',,,';
+      expect(projectNotAllowedMessage('gamma')).toContain('Permitted projects: (none)');
     });
 
     test('既定プロジェクトがリストにもある場合に重複させないこと', () => {
