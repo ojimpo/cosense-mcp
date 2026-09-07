@@ -28,7 +28,7 @@ export async function handleListPages(
     } = params;
     const projectName = paramsProjectName || defaultProjectName;
 
-    const notAllowed = checkProjectAllowed(projectName, defaultProjectName);
+    const notAllowed = checkProjectAllowed(projectName);
     if (notAllowed) {
       return formatError(notAllowed, {
         Operation: 'list_pages',

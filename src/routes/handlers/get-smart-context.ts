@@ -17,7 +17,7 @@ export async function handleGetSmartContext(
   try {
     const projectName = params.projectName || defaultProjectName;
 
-    const notAllowed = checkProjectAllowed(projectName, defaultProjectName);
+    const notAllowed = checkProjectAllowed(projectName);
     if (notAllowed) {
       return formatError(notAllowed, {
         Operation: 'get_smart_context',

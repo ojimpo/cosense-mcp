@@ -18,7 +18,7 @@ export async function handleDeleteLines(
 ) {
   const projectName = params.projectName || defaultProjectName;
 
-  const notAllowed = checkProjectAllowed(projectName, defaultProjectName);
+  const notAllowed = checkProjectAllowed(projectName);
   if (notAllowed) {
     return formatError(notAllowed, {
       Operation: 'delete_lines',

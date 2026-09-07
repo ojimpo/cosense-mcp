@@ -39,50 +39,53 @@ type Handler = (
  * ツールを足した人が書き忘れると素通りしてしまう。ここで全ハンドラを列挙し、
  * さらに下のテストで「ファイルはあるのに列挙されていない」を落とす。
  */
-const HANDLERS: Array<{ file: string; call: (projectName: string) => Promise<unknown> }> = [
+const HANDLERS: Array<{
+  file: string;
+  call: (defaultProjectName: string, projectName?: string) => Promise<unknown>;
+}> = [
   {
     file: 'create-page.ts',
-    call: p => (handleCreatePage as Handler)('default-project', 'sid', { title: 'Page', projectName: p } as never),
+    call: (d, p) => (handleCreatePage as Handler)(d, 'sid', { title: 'Page', projectName: p } as never),
   },
   {
     file: 'delete-lines.ts',
-    call: p => (handleDeleteLines as Handler)('default-project', 'sid', { pageTitle: 'Page', targetLineText: 'line', projectName: p } as never),
+    call: (d, p) => (handleDeleteLines as Handler)(d, 'sid', { pageTitle: 'Page', targetLineText: 'line', projectName: p } as never),
   },
   {
     file: 'delete-page.ts',
-    call: p => (handleDeletePage as Handler)('default-project', 'sid', { pageTitle: 'Page', projectName: p } as never),
+    call: (d, p) => (handleDeletePage as Handler)(d, 'sid', { pageTitle: 'Page', projectName: p } as never),
   },
   {
     file: 'edit-lines.ts',
-    call: p => (handleEditLines as Handler)('default-project', 'sid', { pageTitle: 'Page', targetLineText: 'line', newText: 'new', projectName: p } as never),
+    call: (d, p) => (handleEditLines as Handler)(d, 'sid', { pageTitle: 'Page', targetLineText: 'line', newText: 'new', projectName: p } as never),
   },
   {
     file: 'get-page.ts',
-    call: p => (handleGetPage as Handler)('default-project', 'sid', { pageTitle: 'Page', projectName: p } as never),
+    call: (d, p) => (handleGetPage as Handler)(d, 'sid', { pageTitle: 'Page', projectName: p } as never),
   },
   {
     file: 'get-page-url.ts',
-    call: p => (handleGetPageUrl as Handler)('default-project', 'sid', { title: 'Page', projectName: p } as never),
+    call: (d, p) => (handleGetPageUrl as Handler)(d, 'sid', { title: 'Page', projectName: p } as never),
   },
   {
     file: 'get-smart-context.ts',
-    call: p => (handleGetSmartContext as Handler)('default-project', 'sid', { title: 'Page', projectName: p } as never),
+    call: (d, p) => (handleGetSmartContext as Handler)(d, 'sid', { title: 'Page', projectName: p } as never),
   },
   {
     file: 'insert-lines.ts',
-    call: p => (handleInsertLines as Handler)('default-project', 'sid', { pageTitle: 'Page', targetLineText: 'line', text: 'text', projectName: p } as never),
+    call: (d, p) => (handleInsertLines as Handler)(d, 'sid', { pageTitle: 'Page', targetLineText: 'line', text: 'text', projectName: p } as never),
   },
   {
     file: 'list-pages.ts',
-    call: p => (handleListPages as Handler)('default-project', 'sid', { projectName: p } as never),
+    call: (d, p) => (handleListPages as Handler)(d, 'sid', { projectName: p } as never),
   },
   {
     file: 'rewrite-page.ts',
-    call: p => (handleRewritePage as Handler)('default-project', 'sid', { pageTitle: 'Page', body: 'body', projectName: p } as never),
+    call: (d, p) => (handleRewritePage as Handler)(d, 'sid', { pageTitle: 'Page', body: 'body', projectName: p } as never),
   },
   {
     file: 'search-pages.ts',
-    call: p => (handleSearchPages as Handler)('default-project', 'sid', { query: 'q', projectName: p } as never),
+    call: (d, p) => (handleSearchPages as Handler)(d, 'sid', { query: 'q', projectName: p } as never),
   },
 ];
 
@@ -105,11 +108,13 @@ function resultText(result: unknown): string {
 describe('COSENSE_PROJECT_ALLOW_LIST が全ハンドラに効くこと', () => {
   const originalAllowList = process.env.COSENSE_PROJECT_ALLOW_LIST;
   const originalEnableDelete = process.env.COSENSE_ENABLE_DELETE;
+  const originalProjectName = process.env.COSENSE_PROJECT_NAME;
 
   beforeEach(() => {
     jest.clearAllMocks();
     // 破壊的ツールが「無効だから」ではなく「許可外だから」落ちることを見たいので有効にしておく
     process.env.COSENSE_ENABLE_DELETE = 'true';
+    process.env.COSENSE_PROJECT_NAME = 'default-project';
   });
 
   afterAll(() => {
@@ -122,6 +127,11 @@ describe('COSENSE_PROJECT_ALLOW_LIST が全ハンドラに効くこと', () => {
       delete process.env.COSENSE_ENABLE_DELETE;
     } else {
       process.env.COSENSE_ENABLE_DELETE = originalEnableDelete;
+    }
+    if (originalProjectName === undefined) {
+      delete process.env.COSENSE_PROJECT_NAME;
+    } else {
+      process.env.COSENSE_PROJECT_NAME = originalProjectName;
     }
   });
 
@@ -138,7 +148,7 @@ describe('COSENSE_PROJECT_ALLOW_LIST が全ハンドラに効くこと', () => {
     test('許可外のプロジェクトを指定するとエラーになること', async () => {
       process.env.COSENSE_PROJECT_ALLOW_LIST = 'allowed-project';
 
-      const result = await call('forbidden-project') as { isError?: boolean };
+      const result = await call('default-project', 'forbidden-project') as { isError?: boolean };
 
       expect(result.isError).toBe(true);
       expect(resultText(result)).toContain("Project 'forbidden-project' is not allowed");
@@ -147,7 +157,7 @@ describe('COSENSE_PROJECT_ALLOW_LIST が全ハンドラに効くこと', () => {
     test('許可外なら Cosense API を一切呼ばないこと', async () => {
       process.env.COSENSE_PROJECT_ALLOW_LIST = 'allowed-project';
 
-      await call('forbidden-project');
+      await call('default-project', 'forbidden-project');
 
       expect(mockedPatch).not.toHaveBeenCalled();
       expect(mockedCosense.getPage).not.toHaveBeenCalled();
@@ -157,10 +167,22 @@ describe('COSENSE_PROJECT_ALLOW_LIST が全ハンドラに効くこと', () => {
       expect(mockedCosense.createPageUrl).not.toHaveBeenCalled();
     });
 
+    test('CLI の --project 相当（既定プロジェクト名としても渡る）でも弾かれること', async () => {
+      // CLI は --project=NAME の値を defaultProjectName としてハンドラに渡し、params.projectName は空になる。
+      // 暗黙の既定プロジェクトを引数から取ると、この経路だけ許可リストが素通りする
+      process.env.COSENSE_PROJECT_NAME = 'allowed-project';
+      process.env.COSENSE_PROJECT_ALLOW_LIST = 'allowed-project';
+
+      const result = await call('forbidden-project') as { isError?: boolean };
+
+      expect(result.isError).toBe(true);
+      expect(resultText(result)).toContain("Project 'forbidden-project' is not allowed");
+    });
+
     test('許可リストが未設定なら許可リスト由来のエラーは出ないこと', async () => {
       delete process.env.COSENSE_PROJECT_ALLOW_LIST;
 
-      const result = await call('any-project');
+      const result = await call('default-project', 'any-project');
 
       expect(resultText(result)).not.toContain('is not allowed');
     });
@@ -168,7 +190,7 @@ describe('COSENSE_PROJECT_ALLOW_LIST が全ハンドラに効くこと', () => {
     test('既定プロジェクトはリストに書かれていなくても弾かれないこと', async () => {
       process.env.COSENSE_PROJECT_ALLOW_LIST = 'allowed-project';
 
-      const result = await call('default-project');
+      const result = await call('default-project', 'default-project');
 
       expect(resultText(result)).not.toContain('is not allowed');
     });

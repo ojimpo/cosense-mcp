@@ -21,7 +21,7 @@ export async function handleEditLines(
 ) {
   const projectName = params.projectName || defaultProjectName;
 
-  const notAllowed = checkProjectAllowed(projectName, defaultProjectName);
+  const notAllowed = checkProjectAllowed(projectName);
   if (notAllowed) {
     return formatError(notAllowed, {
       Operation: 'edit_lines',

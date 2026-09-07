@@ -1,12 +1,12 @@
 /**
  * 操作対象プロジェクトの制限（`COSENSE_PROJECT_ALLOW_LIST`）。
  *
- * 全ツールはパラメータで `projectName` の上書きを受け付ける。これはマルチプロジェクトを
- * 扱うための意図的な仕様であって、塞ぐべき穴ではない。ただし SID が届く範囲は既定プロジェクト
- * より広いことが多く、LLM が誤って別プロジェクトを指したときの歯止めが無い。
+ * 全ツールはパラメータで `projectName` の上書きを受け付ける。マルチプロジェクトを扱うための
+ * 意図的な仕様だが、SID が届く範囲は既定プロジェクトより広いことが多く、LLM が誤って別の
+ * プロジェクトを指したときの歯止めが無い。
  *
- * 未設定なら従来どおり無制限（後方互換）。絞りたい人だけ絞る、オプトインの安全策。
- * `COSENSE_ENABLE_DELETE` と同じく、環境変数は呼び出しごとに読む。
+ * 未設定なら従来どおり無制限（後方互換）。`COSENSE_ENABLE_DELETE` と同じく、絞りたい人だけ
+ * 絞るオプトインの安全策で、環境変数は呼び出しごとに読む。
  */
 
 /** 許可リストを環境変数から読む。未設定・空なら undefined（＝無制限）。 */
@@ -19,19 +19,27 @@ export function getProjectAllowList(): string[] | undefined {
 }
 
 /**
+ * 暗黙に許可される既定プロジェクト。
+ *
+ * ハンドラが受け取る `defaultProjectName` ではなく環境変数を見る。CLI は `--project=NAME` の
+ * 値をそのまま `defaultProjectName` としてハンドラに渡すため、引数を基準にすると
+ * 「指定した名前＝既定」が常に成立して、許可リストが素通りになる。
+ */
+function getDefaultProjectName(): string | undefined {
+  return process.env.COSENSE_PROJECT_NAME?.trim() || undefined;
+}
+
+/**
  * 指定されたプロジェクトが許可されているか判定する。
  * 既定プロジェクト（`COSENSE_PROJECT_NAME`）は暗黙にリストに含まれる扱い。
  *
  * 照合は大文字小文字を区別する。Scrapbox のページ解決は寛容だが、ここまで寛容にすると
  * 表記違いで許可外のプロジェクトが通ってしまうため。
  */
-export function isProjectAllowed(
-  projectName: string,
-  defaultProjectName: string | undefined
-): boolean {
+export function isProjectAllowed(projectName: string): boolean {
   const allowList = getProjectAllowList();
   if (!allowList) return true;
-  if (defaultProjectName && projectName === defaultProjectName) return true;
+  if (projectName === getDefaultProjectName()) return true;
   return allowList.includes(projectName);
 }
 
@@ -39,10 +47,8 @@ export function isProjectAllowed(
  * 拒否時のメッセージ。許可済みの一覧をそのまま見せる — 隠しても攻撃者には効かず、
  * 設定ミスを直す人が困るだけなので。
  */
-export function projectNotAllowedMessage(
-  projectName: string,
-  defaultProjectName: string | undefined
-): string {
+export function projectNotAllowedMessage(projectName: string): string {
+  const defaultProjectName = getDefaultProjectName();
   // 既定プロジェクトは暗黙に許可されるので、案内にも含めないと嘘になる
   const permitted = [
     ...(defaultProjectName ? [defaultProjectName] : []),
@@ -59,10 +65,7 @@ export function projectNotAllowedMessage(
  * あるため。投げるとそこだけ catch されない。呼び出し側は受け取った文字列を
  * それぞれの `formatError` に載せる。
  */
-export function checkProjectAllowed(
-  projectName: string,
-  defaultProjectName: string | undefined
-): string | undefined {
-  if (isProjectAllowed(projectName, defaultProjectName)) return undefined;
-  return projectNotAllowedMessage(projectName, defaultProjectName);
+export function checkProjectAllowed(projectName: string): string | undefined {
+  if (isProjectAllowed(projectName)) return undefined;
+  return projectNotAllowedMessage(projectName);
 }

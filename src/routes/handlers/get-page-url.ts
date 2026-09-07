@@ -14,7 +14,7 @@ export async function handleGetPageUrl(
   try {
     const projectName = params.projectName || defaultProjectName;
 
-    const notAllowed = checkProjectAllowed(projectName, defaultProjectName);
+    const notAllowed = checkProjectAllowed(projectName);
     if (notAllowed) {
       return {
         content: [{

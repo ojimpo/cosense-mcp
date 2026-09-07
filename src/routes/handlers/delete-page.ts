@@ -30,7 +30,7 @@ export async function handleDeletePage(
     Timestamp: new Date().toISOString(),
   });
 
-  const notAllowed = checkProjectAllowed(projectName, defaultProjectName);
+  const notAllowed = checkProjectAllowed(projectName);
   if (notAllowed) {
     return formatError(notAllowed, errorDetails(), params.compact);
   }
