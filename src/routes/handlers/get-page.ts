@@ -1,5 +1,5 @@
-import { getPage, toReadablePage } from "../../cosense.js";
-import { formatYmd, formatError } from '../../utils/format.js';
+import { getPage, toReadablePage, withUserNames } from "../../cosense.js";
+import { formatYmd, formatError, formatEditorLines } from '../../utils/format.js';
 
 export interface GetPageParams {
   pageTitle: string;
@@ -14,6 +14,7 @@ export async function handleGetPage(
 ) {
   try {
     const projectName = params.projectName || defaultProjectName;
+
     const page = await getPage(projectName, params.pageTitle, cosenseSid);
 
     if (!page) {
@@ -49,19 +50,14 @@ export async function handleGetPage(
         : '';
       fullText = `${header}\n${contentText}${links}`;
     } else {
+      // 名前はページの API に無いので、メンバー一覧から引く（数分覚えておくので、多くは要求が増えない）。
+      // compact には名前を出さないので引かない
+      const [named] = await withUserNames(projectName, [page], cosenseSid);
       const formattedText = [
         `Title: ${readablePage.title}`,
         `Created: ${formatYmd(new Date(readablePage.created * 1000))}`,
         `Updated: ${formatYmd(new Date(readablePage.updated * 1000))}`,
-        `Created user: ${readablePage.lastUpdateUser?.displayName || readablePage.user.displayName}`,
-        `Last editor: ${readablePage.user.displayName}`,
-        `Other editors: ${(readablePage.collaborators ?? [])
-          .filter(collab =>
-            collab.id !== readablePage.user.id &&
-            collab.id !== readablePage.lastUpdateUser?.id
-          )
-          .map(user => user.displayName)
-          .join(', ')}`
+        ...formatEditorLines(named ?? page),
       ].join('\n');
 
       const linksText = `\nLinks:\n${readablePage.links.length > 0

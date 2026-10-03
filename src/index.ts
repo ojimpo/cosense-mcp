@@ -24,8 +24,8 @@ import { createRequire } from "node:module";
 // package.json を唯一のバージョン情報源にする（リリース時のズレ防止）
 const require = createRequire(import.meta.url);
 const { version } = require("../package.json") as { version: string };
-import { listPages, getPage, toReadablePage } from "./cosense.js";
-import { formatYmd } from './utils/format.js';
+import { listPages, getPage, toReadablePage, withUserNames } from "./cosense.js";
+import { formatYmd, formatEditorLines } from './utils/format.js';
 import { setupRoutes } from './routes/index.js';
 import { isDeleteEnabled } from './routes/handlers/delete-page.js';
 import { DEFAULT_LIST_LIMIT, DEFAULT_LIST_SORT } from './routes/handlers/list-pages.js';
@@ -162,19 +162,12 @@ function createServer(session: SessionConfig = defaultSession(sessionDefaults())
       throw new Error(`Page ${title} not found`);
     }
     const readablePage = toReadablePage(getPageResult);
+    const [named] = await withUserNames(session.projectName, [getPageResult], session.cosenseSid);
     const formattedText = [
       `Title: ${readablePage.title}`,
       `Created: ${formatYmd(new Date(readablePage.created * 1000))}`,
       `Updated: ${formatYmd(new Date(readablePage.updated * 1000))}`,
-      `Created user: ${readablePage.lastUpdateUser?.displayName || readablePage.user.displayName}`,
-      `Last editor: ${readablePage.user.displayName}`,
-      `Other editors: ${readablePage.collaborators
-        .filter(collab =>
-          collab.id !== readablePage.user.id &&
-          collab.id !== readablePage.lastUpdateUser?.id
-        )
-        .map(user => user.displayName)
-        .join(', ')}`,
+      ...formatEditorLines(named ?? getPageResult),
       '',
       readablePage.lines.map(line => line.text).join('\n'),
       '',

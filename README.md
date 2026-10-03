@@ -331,7 +331,7 @@ claude mcp add cosense \
 | `COSENSE_REQUEST_TIMEOUT_MS` | `30000` | Cosense APIへのリクエストを打ち切るまでの時間（ミリ秒）。これが無いとAPI側が詰まったときtool callが返らず、クライアントからは「セッションがフリーズした」ようにしか見えない |
 | `COSENSE_LINT` | `warn` | 書き込み前の記法リント。`warn`＝書き込んだうえで警告、`strict`＝書き込まずエラー、`off`＝無効 |
 | `COSENSE_ENABLE_DELETE` | — | `true`で`delete_page` / `rewrite_page`を有効化。未設定なら`tools/list`にも出ない |
-| `COSENSE_PROJECT_ALLOW_LIST` | — | 操作を許可するプロジェクト名（カンマ区切り）。未設定なら無制限。`COSENSE_PROJECT_NAME`は暗黙に含まれる。設定すると各ツールの`projectName`の説明に許可済みプロジェクトが列挙され、クライアントが既定以外を指定できるようになる |
+| `COSENSE_PROJECT_ALLOW_LIST` | — | 操作を許可するプロジェクト名（カンマ区切り）。未設定なら無制限。**設定したが空（`""`、`",,,"`）なら既定プロジェクトのみ**（制限したい意図とみなす）。`COSENSE_PROJECT_NAME`は暗黙に含まれる。設定すると各ツールの`projectName`の説明に許可済みプロジェクトが列挙され、クライアントが既定以外を指定できるようになる |
 
 ## 認証（OAuth 2.1）
 

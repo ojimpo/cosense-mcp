@@ -14,10 +14,25 @@ describe('COSENSE_PROJECT_ALLOW_LIST', () => {
       expect(isProjectAllowed('anything', DEFAULT, undefined)).toBe(true);
       expect(checkProjectAllowed('anything', DEFAULT, undefined)).toBeUndefined();
     });
+  });
 
-    it('空文字やカンマだけの指定は未設定として扱う', () => {
-      expect(getProjectAllowList({ COSENSE_PROJECT_ALLOW_LIST: '  ' })).toBeUndefined();
-      expect(getProjectAllowList({ COSENSE_PROJECT_ALLOW_LIST: ' , , ' })).toBeUndefined();
+  describe('設定されているが実質空', () => {
+    // 変数を書いた人は制限したい意図なので、「設定したつもりで無制限」には倒さない
+    // （upstream の要望で入った挙動）。未設定と空は別物
+    it('空文字・空白・カンマだけは空配列（＝制限モード）になる', () => {
+      expect(getProjectAllowList({ COSENSE_PROJECT_ALLOW_LIST: '' })).toEqual([]);
+      expect(getProjectAllowList({ COSENSE_PROJECT_ALLOW_LIST: '  ' })).toEqual([]);
+      expect(getProjectAllowList({ COSENSE_PROJECT_ALLOW_LIST: ' , , ' })).toEqual([]);
+    });
+
+    it('既定プロジェクトだけが許可される', () => {
+      expect(isProjectAllowed(DEFAULT, DEFAULT, [])).toBe(true);
+      expect(isProjectAllowed('other', DEFAULT, [])).toBe(false);
+    });
+
+    it('既定プロジェクトも無ければ何も許可されず、理由は (none) と出る', () => {
+      expect(isProjectAllowed('any', undefined, [])).toBe(false);
+      expect(checkProjectAllowed('any', undefined, [])).toContain('Permitted projects: (none)');
     });
   });
 
@@ -35,7 +50,7 @@ describe('COSENSE_PROJECT_ALLOW_LIST', () => {
 
     it('リスト外は拒否し、理由に許可リストを載せる', () => {
       const message = checkProjectAllowed('other', DEFAULT, list);
-      expect(message).toContain("Project 'other' is not allowed");
+      expect(message).toContain("Project 'other' is not allowed by COSENSE_PROJECT_ALLOW_LIST");
       expect(message).toContain('kouki, team, shared');
     });
 

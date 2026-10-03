@@ -297,7 +297,7 @@ git fetch upstream
 git merge upstream/main
 ```
 
-現在の取り込み済み地点: upstream v0.10.1。
+現在の取り込み済み地点: upstream v0.12.0（2026-10-03）。
 
 ### 意図的に取り込んでいない upstream のツール
 
@@ -336,7 +336,7 @@ CLIサブコマンド名: フォークは`replace`（upstreamは`edit`）。行�
 ```bash
 npm run build        # TypeScript → JavaScript (uses tsconfig.build.json)
 npm run watch        # Auto-rebuild during development
-npm run test         # Run Jest tests
+npm run test         # Run Jest tests (tests that hit the real API run only with COSENSE_E2E=true, to avoid 429s)
 npm run lint         # ESLint (console.log triggers warning)
 npm run inspector    # Debug with MCP Inspector
 ```
@@ -401,6 +401,22 @@ All tools are also available as CLI subcommands (`get`, `list`, `search`, `creat
   because that is where the override arrives; copying it into all 13 handlers would mean the next
   tool someone adds silently skips it. Trade-off: calling a handler directly bypasses the check
 
+- **The allowlist helpers take the list as an argument; upstream's read `process.env`.** Upstream
+  (v0.11, our own PR #68 reworked) calls `checkProjectAllowed(name)` from inside every handler and reads
+  the env on each call. That cannot express "this connection may touch these projects, that one may
+  touch others", so the fork keeps `checkProjectAllowed(name, default, allowList)` and passes
+  `SessionConfig.allowedProjects`. Merging v0.12.0 we took upstream's *behaviour* (empty list restricts,
+  the `(none)` message, the wording) but not its *shape*. Upstream's handler-level checks and
+  `handlers/project-allow-list.test.ts` were dropped on purpose; `routes-project-allow-list.test.ts`
+  now pins every tool at the dispatch boundary. CLI denial exits 2 (usage error), upstream exits 1
+
+- **Page reads use `/api/pages/v2/` (upstream v0.12): same body as v1 minus `relatedPages`, which is most
+  of v1's payload.** `rename_page` is fork-only and needs `relatedPages` for its backlink candidates, so
+  `getPage(..., { withRelated: true })` goes back to v1 for that one call. Creator/editor names come from
+  the project member list (`withUserNames`, cached 5 minutes per project+SID). The member lookup goes
+  through `fetchWithTimeout` and rethrows `RequestTimeoutError`; a failed lookup is evicted from the
+  cache, otherwise one timeout would break `list_pages` for five minutes
+
 - **The allowlist doubles as the project *menu*, not just a fence.** A client only ever sees
   `COSENSE_PROJECT_NAME` in the tool descriptions, so a second project stays unreachable in
   practice even when nothing blocks it. `projectNameDescription` in `src/index.ts` appends the
@@ -453,7 +469,7 @@ See README.md. Key variables:
 - `COSENSE_LINT` — Pre-write notation lint: `warn` (default — writes, then warns), `strict` (rejects the write), `off`
 - `COSENSE_REQUEST_TIMEOUT_MS` — Cut off a Cosense API request after this many ms (default 30000). Without it a stalled API means the tool call never returns
 - `COSENSE_ENABLE_DELETE` — Exposes `delete_page` / `rewrite_page`. Unset means they are not registered at all
-- `COSENSE_PROJECT_ALLOW_LIST` — Comma-separated projects the tools may touch. Unset means unrestricted. When set, the allowed names are listed in every tool's `projectName` description — that listing is the only way a client learns a non-default project exists
+- `COSENSE_PROJECT_ALLOW_LIST` — Comma-separated projects the tools may touch. Unset means unrestricted; **set but empty (`""`, `",,,"`) means the default project only** (upstream's request: whoever wrote the variable meant to restrict). compose must pass it without `:-`, or an unset variable becomes an empty string and silently restricts. When set, the allowed names are listed in every tool's `projectName` description — that listing is the only way a client learns a non-default project exists
 - `MCP_PUBLIC_URL` + `MCP_OAUTH_PASSPHRASE` — Enable OAuth. Both required; setting only one throws
 - `MCP_OAUTH_STORE` — Where clients/tokens persist. Unset means a restart forces re-authorization
 - `MCP_ALLOW_UNAUTHENTICATED` — Explicitly allow starting the HTTP transport with no auth

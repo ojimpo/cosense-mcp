@@ -38,7 +38,8 @@ export async function handleRenamePage(
     }
 
     // リネーム元の存在チェック（patchは存在しないページを新規作成してしまうため必須）
-    const sourcePage = await getPage(projectName, params.pageTitle, cosenseSid);
+    // バックリンク候補に関連ページが要るので、v2（関連ページ無し）ではなく v1 で取る
+    const sourcePage = await getPage(projectName, params.pageTitle, cosenseSid, { withRelated: true });
     if (!sourcePage || !sourcePage.persistent) {
       return formatError(`Page not found: ${params.pageTitle}`, errorContext, params.compact);
     }
@@ -68,7 +69,7 @@ export async function handleRenamePage(
     // （＝旧タイトルへリンクしている可能性が高いページ）。Scrapboxはリネームで
     // 他ページ内の [旧タイトル] を書き換えないため、呼び出し側に更新を促す。
     const outgoing = new Set(sourcePage.links.map(l => l.toLowerCase()));
-    const backlinkCandidates = sourcePage.relatedPages.links1hop
+    const backlinkCandidates = (sourcePage.relatedPages?.links1hop ?? [])
       .map(p => p.title)
       .filter(title => !outgoing.has(title.toLowerCase()) && title !== params.pageTitle);
 

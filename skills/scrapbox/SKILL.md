@@ -39,6 +39,7 @@ Cosense ページの取得・検索・作成・編集。CLI 経由で実行。
 |---|---|---|
 | `COSENSE_PROJECT_NAME` | 対象プロジェクト名（`--project` で上書き可） | はい |
 | `COSENSE_SID` | セッションID（プライベートプロジェクト、create/insert/context 操作に必要） | 条件付き |
+| `COSENSE_PROJECT_ALLOW_LIST` | `--project` で指定できるプロジェクトをカンマ区切りで制限する。`COSENSE_PROJECT_NAME` は常に許可。未設定なら無制限、設定して空なら既定プロジェクトのみ | いいえ |
 
 ### 永続化方法
 
