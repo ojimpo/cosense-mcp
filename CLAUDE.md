@@ -313,12 +313,12 @@ upstream に入れるのは「各自が自分の資格情報で自分用サー�
 - worktree の中では `npm test` が「No tests found」になる（`jest.config.js` が `.claude/worktrees` を除外している）。
   `npx jest --testPathIgnorePatterns node_modules build` で上書きして回す
 
-### 複数人対応を引っ込めるか（2026-10-06、保留）
+### 複数人対応を引っ込めるか（2026-10-06、残すと決めた）
 
 「Slack ワークスペースでみんなで使う」想定で作ったが、Cosense「ChatGPTサブスク枠を各自で使うSlack bot」の
 構成だと MCP の利用者は bot 1人で、誰がどのプロジェクトに触れるかは bot 側で絞れる。なので不要になる見込み。
-**致命的な不具合は無いので、いまはそのまま残す。** 2026-10-06 時点で招待から登録した人は0人
-（`/data/users-store.json` が存在しない）。引っ込めるなら、annotated tag（例: `archive/multi-user`）を打ってから
+**残す。** 研究室の Cosense のように、各自が自分のアカウントで書く場では役に立つ。各自が自分の SID で書くので、編集履歴に本人の名前が残る（bot 1本の構成では全部が bot の SID の持ち主になる）。致命的な不具合も無い。 2026-10-06 時点で招待から登録した人は0人
+（`/data/users-store.json` が存在しない）。それでも引っ込めるなら、annotated tag（例: `archive/multi-user`）を打ってから
 main で消す。セッションを認可に縛る処理（`ebd5bb0`）は1人で使う場合でも要るので残す。
 upstream には #67 で「README からフォークへリンクしてほしい」と頼んであるが、文面は認証が決まってから
 相談する約束で、まだリンクは無い。消すなら worldnine にその旨を伝える
