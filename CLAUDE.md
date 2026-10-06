@@ -297,7 +297,21 @@ git fetch upstream
 git merge upstream/main
 ```
 
-現在の取り込み済み地点: upstream v0.12.0（2026-10-03）。
+現在の取り込み済み地点: upstream `dc33bbd`（v0.12.0 + #76、2026-10-06）。
+
+### upstream への HTTP transport の持ち込み（進行中）
+
+#67 で合意した順番: SDK 1.x（upstream が #72 で実施）→ `createServer()` 化（#76、マージ済み）→
+`TRANSPORT=http`。認証は #77 で相談中（OAuth 2.1 を提案、PR 3 と PR 4 に分けたいと提案中）。
+upstream に入れるのは「各自が自分の資格情報で自分用サーバーを立てる」範囲だけで、
+招待・ユーザー管理・管理画面・SID の保管はフォークに残す（worldnine の方針）。
+
+- **upstream の `createServer` は引数なしの包み直し、フォークのは `SessionConfig` を受け取る。**
+  `src/index.ts` は取り込みのたびに衝突するので、フォーク側を採る（2026-10-06 の #76 取り込みでもそうした）
+- upstream は `feat/pat-edit-api` で PAT 対応を進めている（`resolveCredential()`、`COSENSE_MCP_PAT`）。
+  入ってきたら、`session.ts` の SID の流れとどう合わせるかを決める必要がある
+- worktree の中では `npm test` が「No tests found」になる（`jest.config.js` が `.claude/worktrees` を除外している）。
+  `npx jest --testPathIgnorePatterns node_modules build` で上書きして回す
 
 ### 意図的に取り込んでいない upstream のツール
 
