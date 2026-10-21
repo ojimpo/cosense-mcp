@@ -72,6 +72,12 @@
   - 検査が拾わなくなるもの: 変数の代入（`access_token: accessToken`）、`type="password"`。拾い続けるもの: `password = "..."`、`api_key: string = '...'`、`{ access_token: "..." }`。**元の検査も `\b` 区切りなので、`secret_value = "..."` のような名前は元から拾えていない**（挙動は変わっていない）
   - 再実行の結果は `security-scan`・`quality-check` とも pass [確]。**フォーク（ojimpo/cosense-mcp）の CI は実行履歴が0件**（ワークフローは5本とも active なのに、今日 `main` へ何度 push しても1回も走っていない [確]）。理由は**未確定**。そのため、PR 81 を取り込んだときにフォーク側でも同じ誤検知が出るのかは、確かめられていない。ただし `main` のコードには同じ3行がすでに入っている
 
+- **16:5x フォークの CI が1回も走っていない件を調べる** — [ojimpo.icon]「調べよう」
+  - 事実 [確]: ワークフロー5本とも `active`、Actions は有効（`allowed_actions: all`）、`main` への push は `PushEvent` として記録されている。それなのに**実行履歴が0件**で、`main` の最新コミットのチェックスイートには vercel・claude・cloudflare の3つだけがあり、GitHub Actions のものが無い
+  - **Actions 自体は動く。** 使い捨てブランチに新しいワークフローを置いて push したら走って成功した（調べたあと、ブランチも実行履歴も消した）
+  - **`develop` への push では `Security Scan` が走った**（同じコミット、`on.push.branches` に `develop` がある）。つまり既存のワークフローも動く。**`main` への push だけが走っていない**。理由は**未確定**
+  - 次: `main` へ push して、`Security Scan` が走るかを見る（この commit がその確認）
+
 ## 2026-10-19
 
 - **10:48 upstream が #78（PR 3、`TRANSPORT=http`）をマージ** — worldnine の `gh` 上の時刻から。`e5510c3`
