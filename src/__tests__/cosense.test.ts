@@ -1,4 +1,4 @@
-import { getPage, listPages, searchPages, createPageUrl, toReadablePage, withUserNames, clearMembersCache, RequestTimeoutError } from '@/cosense.js';
+import { getPage, listPages, searchPages, createPageUrl, toReadablePage, withUserNames, clearMembersCache, getSmartContext, RequestTimeoutError } from '@/cosense.js';
 import { fetch } from '@whatwg-node/fetch';
 
 // fetchをモック
@@ -84,6 +84,44 @@ describe('cosense API functions', () => {
       expect(url).toContain(`/api/pages/${mockProjectName}/Test%20Page`);
       expect(url).not.toContain('/v2/');
       expect(result?.relatedPages?.links1hop[0]?.title).toBe('Other');
+    });
+
+    test('SIDが無ければCOSENSE_MCP_PATのヘッダを付けること', async () => {
+      process.env.COSENSE_MCP_PAT = 'test-pat';
+      try {
+        mockedFetch.mockResolvedValue({
+          ok: true,
+          json: () => Promise.resolve(mockPageResponse),
+        } as Response);
+
+        await getPage(mockProjectName, 'Test Page');
+
+        expect(mockedFetch).toHaveBeenCalledWith(
+          expect.stringContaining('Test%20Page'),
+          { headers: { 'x-personal-access-token': 'test-pat' }, signal: expect.any(AbortSignal) },
+        );
+      } finally {
+        delete process.env.COSENSE_MCP_PAT;
+      }
+    });
+
+    test('SIDとCOSENSE_MCP_PATの両方があればSIDのcookieを付けること', async () => {
+      process.env.COSENSE_MCP_PAT = 'test-pat';
+      try {
+        mockedFetch.mockResolvedValue({
+          ok: true,
+          json: () => Promise.resolve(mockPageResponse),
+        } as Response);
+
+        await getPage(mockProjectName, 'Test Page', mockSid);
+
+        expect(mockedFetch).toHaveBeenCalledWith(
+          expect.stringContaining('Test%20Page'),
+          { headers: { Cookie: `connect.sid=${mockSid}` }, signal: expect.any(AbortSignal) },
+        );
+      } finally {
+        delete process.env.COSENSE_MCP_PAT;
+      }
     });
 
     test('APIエラーの場合にnullを返すこと', async () => {
@@ -251,6 +289,23 @@ describe('cosense API functions', () => {
       expect(result[1]?.user?.displayName).toBe('Bob');
       // メールアドレスは持ち込まない
       expect(JSON.stringify(result)).not.toContain('@example.com');
+    });
+
+    test('SIDが無ければCOSENSE_MCP_PATでメンバー一覧を引くこと', async () => {
+      process.env.COSENSE_MCP_PAT = 'test-pat';
+      try {
+        mockedFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve(members) } as Response);
+
+        const result = await withUserNames(mockProjectName, pages);
+
+        expect(mockedFetch).toHaveBeenCalledWith(
+          `https://scrapbox.io/api/projects/${mockProjectName}/users`,
+          { headers: { 'x-personal-access-token': 'test-pat' }, signal: expect.any(AbortSignal) },
+        );
+        expect(result[0]?.user?.displayName).toBe('Alice');
+      } finally {
+        delete process.env.COSENSE_MCP_PAT;
+      }
     });
 
     test('メンバー一覧が引けなければ、ページをそのまま返すこと', async () => {
@@ -473,6 +528,37 @@ describe('cosense API functions', () => {
       const listed = await listPages(mockProjectName, mockSid);
       expect(listed.pages).toEqual([]);
       expect(listed.debug?.error).toBe('ECONNRESET');
+    });
+  });
+
+  describe('getSmartContext', () => {
+    afterEach(() => {
+      delete process.env.COSENSE_MCP_PAT;
+    });
+
+    test('SIDのcookieを付けて取得すること', async () => {
+      mockedFetch.mockResolvedValue({ ok: true, text: () => Promise.resolve('context') } as Response);
+
+      const result = await getSmartContext(mockProjectName, 'Test Page', 1, mockSid);
+
+      expect(result).toEqual({ ok: true, text: 'context' });
+      expect(mockedFetch).toHaveBeenCalledWith(
+        expect.stringContaining(`/api/smart-context/export-1hop-links/${mockProjectName}.txt?title=Test%20Page`),
+        { headers: { Cookie: `connect.sid=${mockSid}` }, signal: expect.any(AbortSignal) },
+      );
+    });
+
+    test('SIDが無くてもCOSENSE_MCP_PATで取得すること', async () => {
+      process.env.COSENSE_MCP_PAT = 'test-pat';
+      mockedFetch.mockResolvedValue({ ok: true, text: () => Promise.resolve('context') } as Response);
+
+      const result = await getSmartContext(mockProjectName, 'Test Page', 2);
+
+      expect(result).toEqual({ ok: true, text: 'context' });
+      expect(mockedFetch).toHaveBeenCalledWith(
+        expect.stringContaining(`/api/smart-context/export-2hop-links/${mockProjectName}.txt`),
+        { headers: { 'x-personal-access-token': 'test-pat' }, signal: expect.any(AbortSignal) },
+      );
     });
   });
 });

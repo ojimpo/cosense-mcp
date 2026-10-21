@@ -46,8 +46,8 @@ Claude.ai / ChatGPT → HTTPS → Cloudflare Tunnel → Docker Container
                                          Cosense API (scrapbox.io)
 ```
 
-- Cosense REST APIは**読み取り専用**。書き込みはWebSocket（socket.io）経由で`@cosense/std`の`patch()`を使用
-- Cosenseへの認証は`connect.sid` cookie（`COSENSE_SID`）
+- 書き込みは資格情報で経路が変わる（`src/page-writer.ts`）。SIDはWebSocket（socket.io）経由で`@cosense/std`の`patch()`、PATは編集API（`page-edit-for-ai`）。編集APIはcookie認証の書き込みを拒否し、WebSocketはcookie認証しか通さないため、1本では両方を賄えない
+- Cosenseへの認証は`connect.sid` cookie（`COSENSE_SID`）か、Personal Access Token（`COSENSE_MCP_PAT`）。両方あればSIDが先
 - MCPクライアントからの認証は**OAuth 2.1**。認可サーバーを同じプロセスに同居させている（[認証（OAuth 2.1）](#認証oauth-21)）
 
 ## ツール一覧
@@ -300,7 +300,8 @@ claude mcp add cosense \
 | 変数 | 説明 |
 |------|------|
 | `COSENSE_PROJECT_NAME` | 対象プロジェクト名 |
-| `COSENSE_SID` | `connect.sid` cookie値（[取得方法](./docs/authentication.md)） |
+| `COSENSE_SID` | `connect.sid` cookie値（[取得方法](./docs/authentication.md)）。`COSENSE_MCP_PAT`と同時に設定するとこちらが優先 |
+| `COSENSE_MCP_PAT` | Personal Access Token（`cs_`で始まる値はService Accountとして送る）。SIDの代わりに使える |
 
 ### HTTP transport
 
@@ -308,6 +309,8 @@ claude mcp add cosense \
 |------|-----------|------|
 | `TRANSPORT` | `stdio` | `stdio`（Claude Desktop）か `http`（Claude.ai） |
 | `PORT` | `3000` | HTTPポート（`TRANSPORT=http`時のみ） |
+| `MCP_HTTP_HOST` | `127.0.0.1` | 待ち受けアドレス。コンテナで公開するなら`0.0.0.0`を明示する（Dockerfileは設定済み） |
+| `MCP_ALLOWED_HOSTS` | — | 受け付ける`Host`ヘッダ（カンマ区切り）。DNSリバインディング対策。`0.0.0.0`で待ち受けるときは設定を推奨 |
 | `MCP_PUBLIC_URL` | — | 公開オリジン。これと`MCP_OAUTH_PASSPHRASE`の両方でOAuthが有効になる |
 | `MCP_OAUTH_PASSPHRASE` | — | 同意画面のパスフレーズ（12文字以上） |
 | `MCP_OAUTH_STORE` | — | クライアント登録・トークンの永続化先。未指定だと再起動で再認可が必要 |

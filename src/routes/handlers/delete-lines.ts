@@ -1,6 +1,7 @@
-import { patch } from '@cosense/std/websocket';
+import { writePage } from '../../page-writer.js';
+import { resolveCredential } from '../../utils/auth.js';
 import type { BaseLine } from '@cosense/types/rest';
-import { formatError, stringifyError } from '../../utils/format.js';
+import { formatError } from '../../utils/format.js';
 import { selectBlockMatch, formatMatchStarts, AMBIGUITY_HINT, type BlockMatch } from '../../utils/line-match.js';
 
 export interface DeleteLinesParams {
@@ -19,8 +20,8 @@ export async function handleDeleteLines(
   try {
     const projectName = params.projectName || defaultProjectName;
 
-    if (!cosenseSid) {
-      return formatError('Authentication required: COSENSE_SID is needed for page editing', {
+    if (!resolveCredential(cosenseSid)) {
+      return formatError('Authentication required: COSENSE_MCP_PAT or COSENSE_SID is needed for page editing', {
         Operation: 'delete_lines',
         Project: projectName,
         Page: params.pageTitle,
@@ -30,7 +31,7 @@ export async function handleDeleteLines(
 
     let match: BlockMatch | undefined;
     let wouldDeleteTitle = false;
-    const result = await patch(projectName, params.pageTitle, (lines: BaseLine[]) => {
+    const result = await writePage(projectName, params.pageTitle, (lines: BaseLine[]) => {
       // patch がコンフリクトでリトライした場合に前回の結果が残らないようリセットする
       wouldDeleteTitle = false;
       match = selectBlockMatch(lines, params.targetLineText, params.occurrence);
@@ -52,9 +53,7 @@ export async function handleDeleteLines(
         ...lines.slice(0, match.selected),
         ...lines.slice(match.selected + match.targetLines.length)
       ];
-    }, {
-      sid: cosenseSid
-    });
+    }, cosenseSid);
 
     const errorContext = {
       Operation: 'delete_lines',
@@ -94,7 +93,7 @@ export async function handleDeleteLines(
     }
 
     if (!result.ok) {
-      throw new Error(`WebSocket patch failed: ${stringifyError(result.err)}`);
+      throw new Error(result.err);
     }
 
     const deletedCount = match?.targetLines.length ?? 1;

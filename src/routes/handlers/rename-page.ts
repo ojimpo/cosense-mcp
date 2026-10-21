@@ -26,7 +26,7 @@ export async function handleRenamePage(
     };
 
     if (!cosenseSid) {
-      return formatError('Authentication required: COSENSE_SID is needed for page editing', errorContext, params.compact);
+      return formatError('Authentication required: COSENSE_SID is needed for renaming pages (COSENSE_MCP_PAT is not supported: whether the edit API treats a title-line edit as a rename is unverified)', errorContext, params.compact);
     }
 
     if (!params.newTitle.trim()) {

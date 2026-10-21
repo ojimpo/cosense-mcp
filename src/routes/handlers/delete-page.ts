@@ -1,6 +1,7 @@
-import { patch } from '@cosense/std/websocket';
+import { writePage } from '../../page-writer.js';
+import { resolveCredential } from '../../utils/auth.js';
 import { getPage } from '../../cosense.js';
-import { formatError, stringifyError } from '../../utils/format.js';
+import { formatError } from '../../utils/format.js';
 
 export interface DeletePageParams {
   pageTitle: string;
@@ -44,9 +45,9 @@ export async function handleDeletePage(
       );
     }
 
-    if (!cosenseSid) {
+    if (!resolveCredential(cosenseSid)) {
       return formatError(
-        'Authentication required: COSENSE_SID is needed for deleting pages',
+        'Authentication required: COSENSE_MCP_PAT or COSENSE_SID is needed for deleting pages',
         errorDetails(),
         params.compact
       );
@@ -95,13 +96,11 @@ export async function handleDeletePage(
       };
     }
 
-    // 全行を空配列にする。Cosenseは全ての行が空になったページを自動的に削除する
-    const result = await patch(projectName, params.pageTitle, () => [], {
-      sid: cosenseSid,
-    });
+    // 空配列を返すとページの削除になる（websocket・編集 API とも `{ deleted: true }` を送る）
+    const result = await writePage(projectName, params.pageTitle, () => [], cosenseSid);
 
     if (!result.ok) {
-      throw new Error(`WebSocket patch failed: ${stringifyError(result.err)}`);
+      throw new Error(result.err);
     }
 
     if (params.compact) {

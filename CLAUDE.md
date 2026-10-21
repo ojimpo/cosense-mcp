@@ -374,16 +374,16 @@ npm run inspector    # Debug with MCP Inspector
 | `get_page` | Retrieve page content, metadata, and links | - |
 | `list_pages` | List pages with sorting and pagination (default 100, max 1000; default sort `updated`) | - |
 | `search_pages` | Keyword search (API limit: 100 results) | - |
-| `create_page` | Create new page. Rejects if page already exists | SID |
+| `create_page` | Create new page. Rejects if page already exists | PAT/SID |
 | `get_page_url` | Generate URL from page title | - |
-| `insert_lines` | Insert text after a target line/block (exact match, `occurrence` for duplicates). Appends to end if not found | SID |
-| `replace_lines` | Replace a line or consecutive block (exact match, `occurrence` for duplicates). Supports N→M line expansion | SID |
-| `delete_lines` | Delete a line or consecutive block (exact match, `occurrence` for duplicates). Refuses to delete the title line | SID |
-| `get_smart_context` | Get page + linked pages (1-hop/2-hop) in AI-optimized format | SID |
+| `insert_lines` | Insert text after a target line/block (exact match, `occurrence` for duplicates). Appends to end if not found | PAT/SID |
+| `replace_lines` | Replace a line or consecutive block (exact match, `occurrence` for duplicates). Supports N→M line expansion | PAT/SID |
+| `delete_lines` | Delete a line or consecutive block (exact match, `occurrence` for duplicates). Refuses to delete the title line | PAT/SID |
+| `get_smart_context` | Get page + linked pages (1-hop/2-hop) in AI-optimized format | PAT/SID |
 | `get_notation_guide` | Return the full Cosense notation guide (call before writing content) | - |
-| `rename_page` | Rename a page by rewriting its title line. Backlinks are NOT auto-updated (response lists candidates) | SID |
-| `delete_page` | Delete a whole page. Gated by `COSENSE_ENABLE_DELETE`; supports `dryRun` | SID + gate |
-| `rewrite_page` | Replace a page's entire content (title preserved). Gated by `COSENSE_ENABLE_DELETE`; supports `dryRun` | SID + gate |
+| `rename_page` | Rename a page by rewriting its title line. Backlinks are NOT auto-updated (response lists candidates) | PAT/SID |
+| `delete_page` | Delete a whole page. Gated by `COSENSE_ENABLE_DELETE`; supports `dryRun` | PAT/SID + gate |
+| `rewrite_page` | Replace a page's entire content (title preserved). Gated by `COSENSE_ENABLE_DELETE`; supports `dryRun` | PAT/SID + gate |
 
 ### CLI
 
@@ -403,7 +403,9 @@ All tools are also available as CLI subcommands (`get`, `list`, `search`, `creat
 
 ### Directory Structure
 
-- `src/cosense.ts` — Scrapbox REST API client
+- `src/cosense.ts` — Scrapbox REST API client (reads)
+- `src/page-writer.ts` — `writePage`: writes through the edit API (PAT / Service Account) or the websocket (SID)
+- `src/utils/auth.ts` — Credential resolution (`resolveCredential`) and request headers
 - `src/routes/handlers/` — One handler module per tool
 - `src/utils/format.ts` — Response formatting, `stringifyError`, `formatError`
 - `src/utils/sort.ts` — Sorting with pinned page filtering
@@ -473,10 +475,12 @@ All tools are also available as CLI subcommands (`get`, `list`, `search`, `creat
   `sort ?? DEFAULT_LIST_SORT` once. `sortPages`'s own default is still created-order and is
   covered by a test that pins that intent — so the fix belongs at the caller, not in the util
 
-- **WebSocket API (`@cosense/std`)** is used for `create_page` / `insert_lines` because the REST API has no page creation/editing endpoints
+- **All page writes go through `writePage` (`src/page-writer.ts`)** (upstream v0.13, #79), which picks the path by credential: a PAT or Service Account uses the edit API (`/api/pages/v2/<project>/page-edit-for-ai/preview` → `submit`), a SID uses the websocket `patch()` of `@cosense/std`. The edit API refuses cookie-authenticated writes and the websocket accepts only cookie auth, so neither path can serve both. Handlers pass a `patch`-shaped update callback and never know which path runs. The callback may return `undefined` to abort without writing (the fork's `selectBlockMatch` handlers rely on it; upstream's `writePage` did not support it)
+- **Credentials come only from `COSENSE_MCP_PAT` and `COSENSE_SID`** (a `cs_` prefix means Service Account). `COSENSE_SID` wins when both are set. The variable is deliberately not the official CLI's `COSENSE_PAT`, and `~/.cosense/settings.json` is not read, so write power has to be configured for this server explicitly
+- **`writePage()` returns `{ ok: true } | { ok: false; err: string }`**, not throw (the websocket `patch()` returns a `Result` the same way). Must check `result.ok`
+- **Tests unset `COSENSE_MCP_PAT`** (`src/__tests__/setup-env.ts`), so a token in the developer's shell never reaches the edit API from a test
 - **`create_page` rejects existing pages** (`persistent === true`). Without this check, `patch()` silently replaces all content since it's a diff-update API
 - **`insert_lines` uses exact match**. Partial match risks inserting at unintended lines
-- **`patch()` returns `Result<string, PushError>`**, not throw. Must check `result.ok`
 - **Default sort is `updated`**. Aligned across API, display, and user expectations
 - **Notation lint warns by default, it does not block.** The Cosense API stores whatever bytes it is given — breakage happens at render time, so the only place to catch it is before the write. Rules live in `src/utils/notation-lint.ts` and are validated against `@progfay/scrapbox-parser`, the parser Cosense actually renders with. Blocking is opt-in (`COSENSE_LINT=strict`) so a lint false positive can never make content unwritable
 
@@ -485,7 +489,8 @@ All tools are also available as CLI subcommands (`get`, `list`, `search`, `creat
 See README.md. Key variables:
 
 - `COSENSE_PROJECT_NAME` — Target project (required)
-- `COSENSE_SID` — Session ID for private projects and write operations
+- `COSENSE_MCP_PAT` — Personal Access Token (recommended) for private projects, writes, and Smart Context. Writes go through the edit API
+- `COSENSE_SID` — Session ID (`connect.sid`). Takes precedence over `COSENSE_MCP_PAT`. Writes go through the websocket
 - `COSENSE_TOOL_SUFFIX` — Tool name suffix for multiple server instances
 - `COSENSE_CONVERT_NUMBERED_LISTS` — Convert numbered lists to bullet lists
 - `COSENSE_NOTATION_CONFIG` — Path to notation config JSON (heading levels, math, linking, custom rules)

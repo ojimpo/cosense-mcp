@@ -1,7 +1,8 @@
-import { patch } from '@cosense/std/websocket';
+import { writePage } from '../../page-writer.js';
+import { resolveCredential } from '../../utils/auth.js';
 import type { BaseLine } from '@cosense/types/rest';
 import { convertMarkdownToScrapbox } from '../../utils/markdown-converter.js';
-import { formatError, stringifyError } from '../../utils/format.js';
+import { formatError } from '../../utils/format.js';
 import { lintScrapboxText, formatLintWarnings, getLintMode } from '../../utils/notation-lint.js';
 import { selectBlockMatch, formatMatchStarts, type BlockMatch } from '../../utils/line-match.js';
 
@@ -23,8 +24,8 @@ export async function handleInsertLines(
   try {
     const projectName = params.projectName || defaultProjectName;
 
-    if (!cosenseSid) {
-      return formatError('Authentication required: COSENSE_SID is needed for page editing', {
+    if (!resolveCredential(cosenseSid)) {
+      return formatError('Authentication required: COSENSE_MCP_PAT or COSENSE_SID is needed for page editing', {
         Operation: 'insert_lines',
         Project: projectName,
         Page: params.pageTitle,
@@ -55,11 +56,11 @@ export async function handleInsertLines(
       }, params.compact);
     }
 
-    // WebSocket経由でページを更新
+    // ページを更新する（PAT は編集 API、SID は websocket。page-writer.ts）
     // 互換性維持: occurrence未指定で複数マッチした場合は従来通り最初のマッチ、
     // 見つからない場合は末尾追記。occurrence指定時のみ範囲外をエラーにする。
     let match: BlockMatch | undefined;
-    const result = await patch(projectName, params.pageTitle, (lines: BaseLine[]) => {
+    const result = await writePage(projectName, params.pageTitle, (lines: BaseLine[]) => {
       match = selectBlockMatch(lines, params.targetLineText, params.occurrence);
 
       if (match.selectionError === 'occurrence_out_of_range') {
@@ -80,9 +81,7 @@ export async function handleInsertLines(
         ...newLines,
         ...lines.slice(insertIndex)
       ];
-    }, {
-      sid: cosenseSid
-    });
+    }, cosenseSid);
 
     if (match?.selectionError === 'occurrence_out_of_range') {
       return formatError(
@@ -101,7 +100,7 @@ export async function handleInsertLines(
 
     // patchのResult型を正しく判定
     if (!result.ok) {
-      throw new Error(`WebSocket patch failed: ${stringifyError(result.err)}`);
+      throw new Error(result.err);
     }
 
     // 成功時のレスポンス

@@ -1,5 +1,6 @@
 import { fetch } from "@whatwg-node/fetch";
 import { sortPages } from './utils/sort.js';
+import { credentialHeaders, resolveCredential } from './utils/auth.js';
 const API_DOMAIN = process.env.API_DOMAIN || "scrapbox.io";
 
 type FetchInit = Parameters<typeof fetch>[1];
@@ -21,9 +22,13 @@ function requestTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_REQUEST_TIMEOUT_MS;
 }
 
-/** SID があれば Cookie ヘッダを組み立てる。無ければ undefined（公開プロジェクト向け）。 */
+/**
+ * 資格情報（SID・PAT・Service Account）のヘッダを組み立てる。無ければ undefined（公開プロジェクト向け）。
+ * 何を使うかは `resolveCredential` が決める（SID → `COSENSE_MCP_PAT`）。
+ */
 function authHeaders(sid?: string): Record<string, string> | undefined {
-  return sid ? { Cookie: `connect.sid=${sid}` } : undefined;
+  const headers = credentialHeaders(resolveCredential(sid));
+  return Object.keys(headers).length > 0 ? headers : undefined;
 }
 
 /**
@@ -530,14 +535,14 @@ type SmartContextResult =
  * @param projectName プロジェクト名
  * @param title ページタイトル
  * @param hopCount リンクのホップ数（1 or 2）
- * @param sid セッションID（必須）
+ * @param sid セッションID。PAT（`COSENSE_MCP_PAT` や `~/.cosense/settings.json`）があれば無くてよい
  * @returns 成功時はテキスト、失敗時はエラーメッセージ
  */
 async function getSmartContext(
   projectName: string,
   title: string,
   hopCount: 1 | 2,
-  sid: string,
+  sid?: string,
 ): Promise<SmartContextResult> {
   try {
     const url = `https://${API_DOMAIN}/api/smart-context/export-${hopCount}hop-links/${projectName}.txt?title=${encodeURIComponent(title)}`;

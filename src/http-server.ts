@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import express from 'express';
 import cors from 'cors';
 import type { CorsOptions } from 'cors';
-import type { Express, Request, RequestHandler, Response } from 'express';
+import type { ErrorRequestHandler, Express, Request, RequestHandler, Response } from 'express';
+import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -10,6 +10,10 @@ import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import { resolveOAuthConfig, type OAuthConfig } from './auth/config.js';
 import { setupOAuth, type OAuthWiring } from './auth/index.js';
 import { OriginValidator } from './auth/origin.js';
+
+const jsonRpcError = (res: Response, status: number, code: number, message: string): void => {
+  res.status(status).json({ jsonrpc: '2.0', error: { code, message }, id: null });
+};
 
 /**
  * セッションごとの MCP サーバーを作る。認証済みなら、その接続の `AuthInfo` を渡す
@@ -19,6 +23,10 @@ type ServerFactory = (authInfo?: AuthInfo) => Server;
 
 export interface HttpServerOptions {
   port: number;
+  /** 待ち受けるアドレス。既定はこのマシンの中だけ（コンテナで公開するなら 0.0.0.0 を明示する）。 */
+  host?: string;
+  /** Host ヘッダの許可リスト。0.0.0.0 などで待ち受けるときに DNS リバインディングを防ぐ。 */
+  allowedHosts?: string[] | undefined;
   /**
    * 固定 Bearer トークンによる認証（OAuth 未設定時のローカル用フォールバック）。
    * Claude.ai の static_headers は beta、ChatGPT は固定ヘッダ自体を受け付けないため、
@@ -53,8 +61,18 @@ function buildCorsOptions(allowedOrigins: string[] | undefined): CorsOptions {
  * テストからポートを開かずに叩けるよう、`startHttpServer` とは分けてある。
  */
 export function createApp(createServer: ServerFactory, options: HttpServerOptions): Express {
-  const { authToken, oauth, allowUnauthenticated = false, trustProxy, allowedOrigins } = options;
-  const app = express();
+  const {
+    host = '127.0.0.1',
+    allowedHosts,
+    authToken,
+    oauth,
+    allowUnauthenticated = false,
+    trustProxy,
+    allowedOrigins,
+  } = options;
+  // Host ヘッダの検証と JSON ボディの読み取りは SDK の既定に任せる（検証が先なので、
+  // 許可されない Host はボディを読まずに 403 になる）
+  const app = createMcpExpressApp({ host, ...(allowedHosts ? { allowedHosts } : {}) });
 
   if (trustProxy !== undefined) {
     app.set('trust proxy', trustProxy);
@@ -171,7 +189,7 @@ export function createApp(createServer: ServerFactory, options: HttpServerOption
     });
   };
 
-  const mcpMiddleware: RequestHandler[] = [cors(corsOptions), checkOrigin, express.json()];
+  const mcpMiddleware: RequestHandler[] = [cors(corsOptions), checkOrigin];
   if (requireAuth) mcpMiddleware.push(requireAuth);
 
   // POST /mcp - main MCP endpoint
@@ -276,6 +294,26 @@ export function createApp(createServer: ServerFactory, options: HttpServerOption
     }
   });
 
+  // express.json() が失敗したとき（壊れた JSON、上限を超える本文）の応答。
+  // これが無いと Express 既定のハンドラに渡り、NODE_ENV が production 以外ではスタックトレース入りの
+  // HTML が返る。ルートより後ろに置くこと（エラーハンドラは登録順で効く）
+  const bodyError: ErrorRequestHandler = (err, _req, res, next) => {
+    if (res.headersSent) {
+      next(err);
+      return;
+    }
+    const type = (err as { type?: string } | null)?.type;
+    if (type === 'entity.parse.failed') {
+      jsonRpcError(res, 400, -32700, 'Parse error: the request body is not valid JSON');
+    } else if (type === 'entity.too.large') {
+      jsonRpcError(res, 413, -32600, 'Request body too large');
+    } else {
+      console.error('[http] unhandled error:', err);
+      jsonRpcError(res, 500, -32603, 'Internal server error');
+    }
+  };
+  app.use(bodyError);
+
   // startHttpServer / テストからセッションの後始末ができるよう露出しておく。
   app.locals.transports = transports;
   return app;
@@ -285,8 +323,9 @@ export function startHttpServer(createServer: ServerFactory, options: HttpServer
   const app = createApp(createServer, options);
   const transports = (app.locals as { transports: Record<string, StreamableHTTPServerTransport> }).transports;
 
-  const httpServer = app.listen(options.port, '0.0.0.0', () => {
-    console.error(`MCP Streamable HTTP Server listening on http://0.0.0.0:${options.port}/mcp`);
+  const host = options.host ?? '127.0.0.1';
+  const httpServer = app.listen(options.port, host, () => {
+    console.error(`MCP Streamable HTTP Server listening on http://${host}:${options.port}/mcp`);
   });
 
   const cleanup = async () => {

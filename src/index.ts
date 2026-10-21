@@ -230,7 +230,7 @@ function createServer(session: SessionConfig = defaultSession(sessionDefaults())
               },
               createActually: {
                 type: "boolean",
-                description: "Whether to actually create the page using WebSocket API. If true (default), creates the page immediately. If false, returns only the creation URL.",
+                description: "Whether to actually create the page. If true (default), creates the page immediately. If false, returns only the creation URL.",
               },
               format: {
                 type: "string",
@@ -334,7 +334,7 @@ function createServer(session: SessionConfig = defaultSession(sessionDefaults())
         },
         {
           name: getToolName("get_smart_context"),
-          description: `Get smart context for a page on ${SERVICE_LABEL}. Returns the target page and its linked pages (1-hop or 2-hop) with full content in AI-optimized format. Useful for understanding the context and related knowledge around a specific topic. Requires COSENSE_SID authentication. Uses ${session.projectName} project as default if projectName is not specified.`,
+          description: `Get smart context for a page on ${SERVICE_LABEL}. Returns the target page and its linked pages (1-hop or 2-hop) with full content in AI-optimized format. Useful for understanding the context and related knowledge around a specific topic. Requires COSENSE_MCP_PAT or COSENSE_SID. Uses ${session.projectName} project as default if projectName is not specified.`,
           inputSchema: {
             type: "object",
             properties: {
@@ -458,7 +458,7 @@ function createServer(session: SessionConfig = defaultSession(sessionDefaults())
         // クライアントは「使える」と判断して提案してくるし、断り方も説明しづらい。
         ...(session.enableDelete ? [{
           name: getToolName("delete_page"),
-          description: `Delete a page in Scrapbox project on ${SERVICE_LABEL}. Empties every line of the target page via the WebSocket patch API; Cosense automatically removes a page once all of its lines are empty. There is no undo — pass dryRun to preview what would be removed first. Errors if the page does not exist. Requires COSENSE_SID. Uses ${session.projectName} project as default if projectName is not specified.`,
+          description: `Delete a page in Scrapbox project on ${SERVICE_LABEL}. There is no undo — pass dryRun to preview what would be removed first. Errors if the page does not exist. Requires COSENSE_MCP_PAT or COSENSE_SID. Uses ${session.projectName} project as default if projectName is not specified.`,
           inputSchema: {
             type: "object",
             properties: {
@@ -479,7 +479,7 @@ function createServer(session: SessionConfig = defaultSession(sessionDefaults())
           },
         }, {
           name: getToolName("rewrite_page"),
-          description: `Replace the entire content of a Scrapbox page on ${SERVICE_LABEL} with new content (the page title is preserved as the first line). This is a destructive, whole-page operation with no undo. Prefer insert_lines / replace_lines for targeted edits. Errors if the page does not exist, and rejects empty content (use delete_page to remove a page). Pass dryRun to preview before/after without changing anything. Requires COSENSE_SID. Uses ${session.projectName} project as default if projectName is not specified.`,
+          description: `Replace the entire content of a Scrapbox page on ${SERVICE_LABEL} with new content (the page title is preserved as the first line). This is a destructive, whole-page operation with no undo. Prefer insert_lines / replace_lines for targeted edits. Errors if the page does not exist, and rejects empty content (use delete_page to remove a page). Pass dryRun to preview before/after without changing anything. Requires COSENSE_MCP_PAT or COSENSE_SID, and COSENSE_ENABLE_DELETE=true. Uses ${session.projectName} project as default if projectName is not specified.`,
           inputSchema: {
             type: "object",
             properties: {
@@ -555,46 +555,56 @@ function createServer(session: SessionConfig = defaultSession(sessionDefaults())
 }
 
 // Transport選択
-const transport = process.env.TRANSPORT;
+try {
+  const transport = process.env.TRANSPORT;
 
-if (transport === 'http') {
-  const { startHttpServer } = await import('./http-server.js');
-  const { resolveOAuthConfig } = await import('./auth/config.js');
-  const port = parseInt(process.env.PORT || '3000', 10);
-  const authToken = process.env.MCP_AUTH_TOKEN;
-  const oauth = resolveOAuthConfig();
-  const trustProxy = process.env.MCP_TRUST_PROXY;
-  const allowedOrigins = process.env.MCP_ALLOWED_ORIGINS
-    ?.split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
+  if (transport === 'http') {
+    const { startHttpServer } = await import('./http-server.js');
+    const { resolveOAuthConfig } = await import('./auth/config.js');
+    const port = parseInt(process.env.PORT || '3000', 10);
+    const allowedHosts = process.env.MCP_ALLOWED_HOSTS?.split(',').map((h) => h.trim()).filter(Boolean);
+    const authToken = process.env.MCP_AUTH_TOKEN;
+    const oauth = resolveOAuthConfig();
+    const trustProxy = process.env.MCP_TRUST_PROXY;
+    const allowedOrigins = process.env.MCP_ALLOWED_ORIGINS
+      ?.split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean);
 
-  // 管理画面は MCP とは別のポート。Cloudflare Tunnel が通すのは MCP 側だけなので、
-  // ここはインターネットから到達できず、LAN と Tailscale からしか開けない。
-  const adminPort = process.env.MCP_ADMIN_PORT ? parseInt(process.env.MCP_ADMIN_PORT, 10) : undefined;
-  const onAuthWiring = adminPort && oauth
-    ? async (wiring: { store: import('./auth/store.js').OAuthStore }) => {
-        const { startAdminServer } = await import('./admin-server.js');
-        startAdminServer(adminPort, {
-          config: oauth,
-          store: wiring.store,
-          ...(trustProxy ? { trustProxy: /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy } : {}),
-        });
-      }
-    : undefined;
+    // 管理画面は MCP とは別のポート。Cloudflare Tunnel が通すのは MCP 側だけなので、
+    // ここはインターネットから到達できず、LAN と Tailscale からしか開けない。
+    const adminPort = process.env.MCP_ADMIN_PORT ? parseInt(process.env.MCP_ADMIN_PORT, 10) : undefined;
+    const onAuthWiring = adminPort && oauth
+      ? async (wiring: { store: import('./auth/store.js').OAuthStore }) => {
+          const { startAdminServer } = await import('./admin-server.js');
+          startAdminServer(adminPort, {
+            config: oauth,
+            store: wiring.store,
+            ...(trustProxy ? { trustProxy: /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy } : {}),
+          });
+        }
+      : undefined;
 
-  startHttpServer((authInfo) => createServer(resolveSessionConfig(authInfo, oauth?.users, sessionDefaults())), {
-    port,
-    ...(authToken ? { authToken } : {}),
-    ...(oauth ? { oauth } : {}),
-    allowUnauthenticated: process.env.MCP_ALLOW_UNAUTHENTICATED === 'true',
-    ...(trustProxy ? { trustProxy: /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy } : {}),
-    ...(allowedOrigins && allowedOrigins.length > 0 ? { allowedOrigins } : {}),
-    ...(onAuthWiring ? { onAuthWiring } : {}),
-  });
-} else {
-  // デフォルト: stdio transport
-  const server = createServer();
-  const stdioTransport = new StdioServerTransport();
-  await server.connect(stdioTransport);
+    startHttpServer((authInfo) => createServer(resolveSessionConfig(authInfo, oauth?.users, sessionDefaults())), {
+      port,
+      ...(process.env.MCP_HTTP_HOST ? { host: process.env.MCP_HTTP_HOST } : {}),
+      ...(allowedHosts && allowedHosts.length > 0 ? { allowedHosts } : {}),
+      ...(authToken ? { authToken } : {}),
+      ...(oauth ? { oauth } : {}),
+      allowUnauthenticated: process.env.MCP_ALLOW_UNAUTHENTICATED === 'true',
+      ...(trustProxy ? { trustProxy: /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy } : {}),
+      ...(allowedOrigins && allowedOrigins.length > 0 ? { allowedOrigins } : {}),
+      ...(onAuthWiring ? { onAuthWiring } : {}),
+    });
+  } else {
+    // デフォルト: stdio transport
+    const server = createServer();
+    const stdioTransport = new StdioServerTransport();
+    await server.connect(stdioTransport);
+  }
+} catch (error) {
+  // 起動拒否の理由（認証なしでの起動など）が見えるよう、stderr に出す。
+  // stdio では stdout を使えないので console.error にしてある。
+  console.error(error instanceof Error ? error.message : error);
+  process.exit(1);
 }

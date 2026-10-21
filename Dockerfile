@@ -16,7 +16,7 @@ COPY --from=builder /app/build/ build/
 
 ENV TRANSPORT=http
 ENV PORT=3000
-ENV HOST=0.0.0.0
+ENV MCP_HTTP_HOST=0.0.0.0
 
 EXPOSE 3000
 CMD ["node", "build/index.js"]
