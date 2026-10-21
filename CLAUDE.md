@@ -302,7 +302,8 @@ git merge upstream/main
 ### upstream への HTTP transport の持ち込み（進行中）
 
 #67 で合意した順番: SDK 1.x（upstream が #72 で実施）→ `createServer()` 化（#76、マージ済み）→
-`TRANSPORT=http`（#78、2026-10-19 マージ済み）→ OAuth 2.1（PR 4、未着手）。#77 で合意済み
+`TRANSPORT=http`（#78、2026-10-19 マージ済み）→ **OAuth 2.1（PR 4 = [#81](https://github.com/worldnine/scrapbox-cosense-mcp/pull/81)、
+2026-10-21 に提出、レビュー待ち）**。#77 で合意済み
 （案A=OAuth 2.1、トークンは `MCP_OAUTH_STORE` のファイル、PR 3 / PR 4 に分ける）。
 upstream に入れるのは「各自が自分の資格情報で自分用サーバーを立てる」範囲だけで、
 招待・ユーザー管理・管理画面・SID の保管はフォークに残す（worldnine の方針）。
@@ -318,15 +319,44 @@ upstream に入れるのは「各自が自分の資格情報で自分用サー�
   upstream に持ち込む PR 4 には含めない（利用者の分離はフォークに残す範囲）
 - **`rename_page` は SID 専用のまま。** 編集 API で1行目の `_update` がリネームになるか未確認なので、
   PAT 対応にしていない。確かめるなら実際の PAT で検証してから
-- **upstream の `http-server.ts` は PR 3 の最小版で、フォークの版はその上位版。** PR 4 を作るときは
-  フォークの `http-server.ts` が upstream との差分になる（OAuth・Origin 検証・セッション所有者検証）。
-  待ち受けは upstream に合わせて既定 `127.0.0.1`（`MCP_HTTP_HOST`）で、Dockerfile が `0.0.0.0` を渡す。
-  **`HOST` という環境変数は読まれない**（以前の Dockerfile の `ENV HOST` は飾りだった）
+- **PR 81 の中身と、入れなかったもの。** ブランチは `feat/oauth-2.1`（upstream の `e5510c3` から切った。
+  フォークの `src/auth/` を1人用に削って移植）。入れたのは OAuth 本体・セッションの所有者検証・
+  `MCP_TRUST_PROXY`・`express.json()` の失敗応答・`cors` 依存の削除。**入れていないのは、固定 Bearer（案B、
+  #77 で不要と決まった）、CORS、Origin 検証、招待・管理画面・SID の封筒暗号・`allowServerToken`。**
+  後ろの3つは今もフォークの `http-server.ts` / `auth/` にだけある。CORS と Origin 検証は、欲しければ
+  別 PR で worldnine に相談する約束（PR 81 の本文に書いた）
+- **認証は `ConsentAuthenticator`（`src/auth/authenticator.ts`）に切り出してある。** 「同意画面の入力から誰かを決める」
+  だけを差し替え可能にした Strategy で、upstream の実装は環境変数のパスフレーズ1つ（`PassphraseAuthenticator`）。
+  フォークは `directory-authenticator.ts`（利用者ディレクトリ + 招待）に差し替える。目的はフォークの維持コスト:
+  `provider.ts` を直接改造せずに済ませ、upstream 取り込み時の衝突を減らす。**同意フォームの欄は欄名のまま
+  `submission` に入る**（`sid`、`invite_code`）ので、フォームを変えても `auth/index.ts` は触らない
+- **フォークを PR 81 の上に載せ替える試験を済ませてある（`trial/fork-on-oauth`、未マージ）。** PR 81 を
+  フォークの `main` にマージし、フォーク側のテスト 587 件が通ることと、同意画面の見た目を確認した。
+  フォーク固有の差分は `provider.ts` +79、`store.ts` +107（SID の封筒暗号。差し込み口を足すと upstream に
+  「使わない機能」が増えるのでフォークのパッチとして持つ判断）、`config.ts` +44、SID と招待の同意画面は
+  `consent-page.ts` に出して `pages.ts` の差分は1行（`layout` の export）。**どれも追加中心なので、upstream が
+  すぐ隣の行を直さない限り自動でマージできる見込み**
+- **PR 81 がマージされたら、`trial/fork-on-oauth` をそのまま `main` に入れず、実際のマージ結果から取り込み直す。**
+  squash などでコミットが変わると、`auth/` が再び add/add 衝突になる（初回はそうなった）。解消の方針は
+  「共有ファイルは upstream の版を採り、フォーク固有分を上に載せ直す」。レビューで PR 81 の形が変わった場合も同じ
+- **PR の外のフォークの本番（Docker）には、まだ PR 81 は入っていない。** 入れるときは `trial/fork-on-oauth`
+  ではなく、上の取り込み直しを済ませたものを使う
 - `express.json()` の失敗（壊れた JSON → 400/-32700、上限超過 → 413）は `http-server.ts` の
   エラーハンドラが JSON-RPC で返す。無いと Express 既定が `NODE_ENV` によってスタックトレース入りの
   HTML を返す（worldnine が #78 で指摘）
 - worktree の中では `npm test` が「No tests found」になる（`jest.config.js` が `.claude/worktrees` を除外している）。
-  `npx jest --testPathIgnorePatterns node_modules build` で上書きして回す
+  `npx jest --testPathIgnorePatterns node_modules build` で上書きして回す。**特定のファイルだけ回すときは
+  パスを位置引数にせず `--runTestsByPath <files>` を使う**（位置引数は `--testPathIgnorePatterns` の
+  引数として吸われ、全部流れる）
+- **OAuth の実機確認の組み方**（PR 81 でやった。再現するときの手順）: ビルドしたサーバーに、SDK の
+  `StreamableHTTPClientTransport` + `OAuthClientProvider`（`redirectToAuthorization` で URL を控えるだけ）をつなぎ、
+  同意画面だけ Playwright（Python）で操作する。アクセストークン期限を `MCP_OAUTH_ACCESS_TTL=5` にすると
+  リフレッシュも見られる。**罠は2つ**: コールバックのリダイレクト先に **9 番ポートを使うと Chromium が
+  遮断する**（`ERR_UNSAFE_PORT`。サーバーは正常なのに「コールバックが来ない」ように見える）。
+  また Playwright の `page.route` はクロスオリジンのリダイレクト先を捕まえられなかったので、
+  コールバックは実際に HTTP サーバーを立てて受ける
+- **共有の `git stash` は使わない**（グローバル設定どおり）。確認用の1コマンドでも、作業ツリーがクリーンな
+  つもりで `git stash -u` を打たない
 
 ### 複数人対応を引っ込めるか（2026-10-06、残すと決めた）
 
