@@ -297,19 +297,34 @@ git fetch upstream
 git merge upstream/main
 ```
 
-現在の取り込み済み地点: upstream `dc33bbd`（v0.12.0 + #76、2026-10-06）。
+現在の取り込み済み地点: upstream `e5510c3`（v0.13.0 = #78 HTTP transport + #79 PAT、2026-10-21）。
 
 ### upstream への HTTP transport の持ち込み（進行中）
 
 #67 で合意した順番: SDK 1.x（upstream が #72 で実施）→ `createServer()` 化（#76、マージ済み）→
-`TRANSPORT=http`。認証は #77 で相談中（OAuth 2.1 を提案、PR 3 と PR 4 に分けたいと提案中）。
+`TRANSPORT=http`（#78、2026-10-19 マージ済み）→ OAuth 2.1（PR 4、未着手）。#77 で合意済み
+（案A=OAuth 2.1、トークンは `MCP_OAUTH_STORE` のファイル、PR 3 / PR 4 に分ける）。
 upstream に入れるのは「各自が自分の資格情報で自分用サーバーを立てる」範囲だけで、
 招待・ユーザー管理・管理画面・SID の保管はフォークに残す（worldnine の方針）。
 
 - **upstream の `createServer` は引数なしの包み直し、フォークのは `SessionConfig` を受け取る。**
   `src/index.ts` は取り込みのたびに衝突するので、フォーク側を採る（2026-10-06 の #76 取り込みでもそうした）
-- upstream は `feat/pat-edit-api` で PAT 対応を進めている（`resolveCredential()`、`COSENSE_MCP_PAT`）。
-  入ってきたら、`session.ts` の SID の流れとどう合わせるかを決める必要がある
+- **PAT（#79）は取り込み済み。** `resolveCredential(sid)` は SID が無いと環境変数の `COSENSE_MCP_PAT` に落ちる。
+  これは利用者を分けた構成では穴になる——`sidSource: 'consent'` の友人が SID を復号できなかったとき、
+  運用者の PAT で書けてしまう。そこで `SessionConfig.allowServerToken`（consent なら false）を作り、
+  `withServerToken()`（AsyncLocalStorage、`src/utils/auth.ts`）で **呼び出し境界の2箇所だけ**
+  （`routes/index.ts` の CallTool と `index.ts` の ReadResource）を包んでいる。ハンドラに引数を通さないのは、
+  ツールを足した人が忘れた時点で穴になるから。テストは `routes-project-allow-list.test.ts` の末尾。
+  upstream に持ち込む PR 4 には含めない（利用者の分離はフォークに残す範囲）
+- **`rename_page` は SID 専用のまま。** 編集 API で1行目の `_update` がリネームになるか未確認なので、
+  PAT 対応にしていない。確かめるなら実際の PAT で検証してから
+- **upstream の `http-server.ts` は PR 3 の最小版で、フォークの版はその上位版。** PR 4 を作るときは
+  フォークの `http-server.ts` が upstream との差分になる（OAuth・Origin 検証・セッション所有者検証）。
+  待ち受けは upstream に合わせて既定 `127.0.0.1`（`MCP_HTTP_HOST`）で、Dockerfile が `0.0.0.0` を渡す。
+  **`HOST` という環境変数は読まれない**（以前の Dockerfile の `ENV HOST` は飾りだった）
+- `express.json()` の失敗（壊れた JSON → 400/-32700、上限超過 → 413）は `http-server.ts` の
+  エラーハンドラが JSON-RPC で返す。無いと Express 既定が `NODE_ENV` によってスタックトレース入りの
+  HTML を返す（worldnine が #78 で指摘）
 - worktree の中では `npm test` が「No tests found」になる（`jest.config.js` が `.claude/worktrees` を除外している）。
   `npx jest --testPathIgnorePatterns node_modules build` で上書きして回す
 
@@ -509,6 +524,8 @@ See README.md. Key variables:
 - `MCP_ADMIN_PORT` — Port for the admin page (invites, who is enrolled). Unset means it does not start.
   **Never route this port through the public tunnel**
 - `MCP_ADMIN_BIND` — Host address compose publishes the admin port on. Defaults to `127.0.0.1`
+- `COSENSE_MCP_PAT` — Personal Access Token（upstream #79）。`cs_` で始まれば Service Account。`COSENSE_SID` が優先。compose には未配線（足すなら `environment:` に書く）
+- `MCP_HTTP_HOST` / `MCP_ALLOWED_HOSTS` — 待ち受けアドレス（既定 `127.0.0.1`）と Host ヘッダ許可リスト。0.0.0.0 で待ち受けるなら後者も設定する
 - `MCP_ALLOWED_ORIGINS` — CORS allowlist and `Origin` validation list. Unset = report-only mode
 
 ## CI/CD & Release
