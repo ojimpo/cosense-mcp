@@ -1,4 +1,4 @@
-import { credentialHeaders, resolveCredential } from '@/utils/auth.js';
+import { credentialHeaders, resolveCredential, withServerToken } from '@/utils/auth.js';
 
 describe('resolveCredential', () => {
   afterEach(() => {
@@ -49,5 +49,33 @@ describe('credentialHeaders', () => {
     expect(credentialHeaders({ type: 'serviceAccount', value: 'k' })).toEqual({ 'x-service-account-access-key': 'k' });
     expect(credentialHeaders({ type: 'sid', value: 's' })).toEqual({ Cookie: 'connect.sid=s' });
     expect(credentialHeaders(undefined)).toEqual({});
+  });
+});
+
+describe('withServerToken', () => {
+  afterEach(() => {
+    delete process.env.COSENSE_MCP_PAT;
+  });
+
+  test('許可しない間は COSENSE_MCP_PAT に落ちないこと', async () => {
+    process.env.COSENSE_MCP_PAT = 'operator-pat';
+    // 非同期をまたいでも効く（ハンドラは await を挟む）
+    const inside = await withServerToken(false, async () => {
+      await Promise.resolve();
+      return resolveCredential();
+    });
+    expect(inside).toBeUndefined();
+  });
+
+  test('許可しなくても、本人の SID は使えること', () => {
+    process.env.COSENSE_MCP_PAT = 'operator-pat';
+    expect(withServerToken(false, () => resolveCredential('own-sid'))).toEqual({ type: 'sid', value: 'own-sid' });
+  });
+
+  test('許可していれば従来どおり PAT を使うこと。外へ出れば元に戻ること', () => {
+    process.env.COSENSE_MCP_PAT = 'operator-pat';
+    expect(withServerToken(true, () => resolveCredential())).toEqual({ type: 'personalAccessToken', value: 'operator-pat' });
+    withServerToken(false, () => undefined);
+    expect(resolveCredential()).toEqual({ type: 'personalAccessToken', value: 'operator-pat' });
   });
 });

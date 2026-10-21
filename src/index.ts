@@ -30,6 +30,7 @@ import { setupRoutes } from './routes/index.js';
 import { isDeleteEnabled } from './routes/handlers/delete-page.js';
 import { DEFAULT_LIST_LIMIT, DEFAULT_LIST_SORT } from './routes/handlers/list-pages.js';
 import { getProjectAllowList } from './utils/project.js';
+import { withServerToken } from './utils/auth.js';
 import { defaultSession, describeProjectName, resolveSessionConfig, type SessionConfig, type SessionDefaults } from './session.js';
 
 // 環境変数のデフォルト値と検証用の定数
@@ -153,7 +154,7 @@ function createServer(session: SessionConfig = defaultSession(sessionDefaults())
     };
   });
 
-  server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+  server.setRequestHandler(ReadResourceRequestSchema, (request) => withServerToken(session.allowServerToken, async () => {
     const url = new URL(request.params.uri);
     const title = decodeURIComponent(url.pathname.replace(/^\//, ""));
 
@@ -185,7 +186,7 @@ function createServer(session: SessionConfig = defaultSession(sessionDefaults())
         },
       ],
     };
-  });
+  }));
 
   // この SDK は capabilities で宣言したメソッドしかハンドラ登録できないため、
   // prompts / resource templates は宣言とセットで空の list ハンドラを用意する。
@@ -549,6 +550,7 @@ function createServer(session: SessionConfig = defaultSession(sessionDefaults())
     toolSuffix: TOOL_SUFFIX,
     allowedProjects: session.allowedProjects,
     enableDelete: session.enableDelete,
+    allowServerToken: session.allowServerToken,
   });
 
   return server;

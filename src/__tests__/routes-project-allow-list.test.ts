@@ -68,3 +68,39 @@ describe('MCP ディスパッチ境界の COSENSE_PROJECT_ALLOW_LIST', () => {
     expect((await call(wide, 'get_page_url', 'team')).content[0]?.text ?? '').not.toContain('is not allowed');
   });
 });
+
+describe('MCP ディスパッチ境界のサーバー PAT', () => {
+  const WRITE_TOOLS = ['create_page', 'insert_lines', 'replace_lines', 'delete_lines', 'get_smart_context'];
+
+  function connectWith(allowServerToken: boolean | undefined): CallTool {
+    let handler: CallTool | undefined;
+    const server = {
+      setRequestHandler: (_schema: unknown, fn: CallTool) => {
+        handler = fn;
+      },
+    } as unknown as Server;
+    // SID を持たない接続（本人の SID を復号できなかった友人）
+    setupRoutes(server, { projectName: 'kouki', cosenseSid: undefined, allowServerToken, enableDelete: true });
+    return handler!;
+  }
+
+  beforeEach(() => {
+    process.env.COSENSE_MCP_PAT = 'operator-pat';
+  });
+  afterEach(() => {
+    delete process.env.COSENSE_MCP_PAT;
+  });
+
+  test.each(WRITE_TOOLS)('%s: PAT を許さない接続は、運用者の PAT で書けない', async (tool) => {
+    const result = await call(connectWith(false), tool, 'kouki');
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain('Authentication required');
+  });
+
+  test('PAT を許す接続は、認証の入口を通る（従来どおり）', async () => {
+    const result = await call(connectWith(true), 'insert_lines', 'kouki');
+
+    expect(result.content[0]?.text ?? '').not.toContain('Authentication required');
+  });
+});

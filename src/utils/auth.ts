@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
+
 /**
  * Cosense API に送る資格情報。
  *
@@ -10,6 +12,22 @@ export type Credential =
   | { type: 'personalAccessToken'; value: string }
   | { type: 'serviceAccount'; value: string }
   | { type: 'sid'; value: string };
+
+// 呼び出しの間だけ、サーバーの `COSENSE_MCP_PAT` を使わせないための印。
+// 各ハンドラは SID を引数で受け取るが、PAT は環境変数から読むので、利用者ごとに
+// 資格情報を分けている接続でも、SID が無いと運用者の PAT に落ちてしまう。
+// 引数を足して全ハンドラに通す形だと、次に足すツールが忘れた時点で穴になるので、
+// 呼び出し境界（`routes/index.ts` と resources）で一度だけ包む。
+const credentialScope = new AsyncLocalStorage<{ serverToken: boolean }>();
+
+/**
+ * `allowServerToken` が false の間、`resolveCredential` は `COSENSE_MCP_PAT` を見ない。
+ * 利用者本人が入れた SID（`sidSource: 'consent'`）で動く接続は、SID を復号できなかったときに
+ * 運用者の資格情報へ落としてはならない。「書けない」より「他人の権限で書けた」ほうが桁違いに悪い。
+ */
+export function withServerToken<T>(allowServerToken: boolean, fn: () => T): T {
+  return allowServerToken ? fn() : credentialScope.run({ serverToken: false }, fn);
+}
 
 export function getApiDomain(): string {
   return process.env.API_DOMAIN || 'scrapbox.io';
@@ -38,7 +56,9 @@ const SERVICE_ACCOUNT_PREFIX = 'cs_';
  */
 export function resolveCredential(sid?: string): Credential | undefined {
   if (sid) return { type: 'sid', value: sid };
-  const token = process.env.COSENSE_MCP_PAT?.trim();
+  const token = credentialScope.getStore()?.serverToken === false
+    ? undefined
+    : process.env.COSENSE_MCP_PAT?.trim();
   if (token) {
     return token.startsWith(SERVICE_ACCOUNT_PREFIX)
       ? { type: 'serviceAccount', value: token }

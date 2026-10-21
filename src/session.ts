@@ -15,6 +15,11 @@ export interface SessionConfig {
   /** 触れるプロジェクト。undefined は無制限（従来どおり）。 */
   allowedProjects: string[] | undefined;
   enableDelete: boolean;
+  /**
+   * サーバーの `COSENSE_MCP_PAT` を使ってよいか。運用者の資格情報なので、
+   * 本人が入れた SID で動く利用者（`sidSource: 'consent'`）には使わせない。
+   */
+  allowServerToken: boolean;
   /** サーバー既定の設定そのままか。起動時に取得済みの resources を出してよいかの判断に使う。 */
   isDefaultSession: boolean;
   /** ログ用。誰の接続かを追えるようにする。 */
@@ -45,6 +50,7 @@ export function defaultSession(defaults: SessionDefaults): SessionConfig {
     cosenseSid: defaults.cosenseSid,
     allowedProjects: defaults.allowedProjects,
     enableDelete: defaults.enableDelete,
+    allowServerToken: true,
     isDefaultSession: true,
     userId: 'default',
   };
@@ -77,6 +83,7 @@ export function resolveSessionConfig(
     cosenseSid,
     allowedProjects: usesServerProjects ? defaults.allowedProjects : profile.projects,
     enableDelete: profile.enableDelete,
+    allowServerToken: profile.sidSource !== 'consent',
     isDefaultSession: profile.sidSource === 'env' && usesServerProjects,
     userId: profile.id,
   };

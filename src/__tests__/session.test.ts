@@ -62,6 +62,17 @@ describe('resolveSessionConfig', () => {
     expect(session.allowedProjects).toEqual(['shared']);
   });
 
+  it('友人にはサーバーの PAT も使わせない。サーバーの SID を使う利用者と運用者には使わせる', () => {
+    const users = directory([
+      FRIEND,
+      { id: 'reader', passphrase: 'reader-passphrase-99', projects: ['shared'], sidSource: 'env' },
+    ]);
+    // PAT は環境変数から読まれるので、SID が無いだけでは運用者の権限に落ちる
+    expect(resolveSessionConfig({ extra: { userId: 'friend' } }, users, DEFAULTS).allowServerToken).toBe(false);
+    expect(resolveSessionConfig({ extra: { userId: 'reader' } }, users, DEFAULTS).allowServerToken).toBe(true);
+    expect(resolveSessionConfig(undefined, users, DEFAULTS).allowServerToken).toBe(true);
+  });
+
   it('サーバーのSIDを使う利用者でも、プロジェクトを絞れば既定セッション扱いにしない', () => {
     const users = directory([
       { id: 'reader', passphrase: 'reader-passphrase-99', projects: ['shared'], sidSource: 'env' },
