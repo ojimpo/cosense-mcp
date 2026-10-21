@@ -2,6 +2,8 @@
 
 worldnine/scrapbox-cosense-mcp のフォーク。Claude.ai Custom Connector対応（HTTP transport）を追加。
 
+経緯・却下した案・実測値は [DEVLOG.md](./DEVLOG.md)（追記のみ）。このファイルは「いまの正しい姿」で、前提が変わったら古い記述を消す。
+
 ## このフォークの追加分
 
 - `src/http-server.ts` — Express + StreamableHTTPServerTransport（HTTP transportの本体）
