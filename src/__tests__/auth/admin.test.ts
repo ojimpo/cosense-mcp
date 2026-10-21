@@ -83,7 +83,7 @@ describe('管理画面', () => {
     const pendingId = /name="pending_id" value="([^"]+)"/.exec(res.body)![1]!;
     const redirect = provider.approve(
       pendingId,
-      { passphrase: FRIEND_PASSPHRASE, sid: FRIEND_SID, inviteCode: code },
+      { passphrase: FRIEND_PASSPHRASE, sid: FRIEND_SID, invite_code: code },
       '127.0.0.1'
     );
     await provider.exchangeAuthorizationCode(

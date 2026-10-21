@@ -14,11 +14,16 @@ import { metadataHandler } from '@modelcontextprotocol/sdk/server/auth/handlers/
 import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
 import type { OAuthConfig } from './config.js';
 import { OAuthStore } from './store.js';
-import { ConsentError, CosenseOAuthProvider, PendingNotFoundError } from './provider.js';
-import { renderConsentPage, renderErrorPage } from './pages.js';
+import { ConsentError, type ConsentSubmission } from './authenticator.js';
+import { CosenseOAuthProvider, PendingNotFoundError } from './provider.js';
+import { renderErrorPage } from './pages.js';
+import { renderConsentPage } from './consent-page.js';
 
 /** 同意フォームの POST 先。 */
 const CONSENT_PATH = '/oauth/consent';
+
+/** 認証に渡さないフォームの欄（フロー制御用と、パスワードマネージャ向けの表示用）。 */
+const RESERVED_FIELDS = new Set(['pending_id', 'action', 'username']);
 
 export interface OAuthWiring {
   /** ルートに載せるルーター群。 */
@@ -80,18 +85,14 @@ export function setupOAuth(config: OAuthConfig): OAuthWiring {
 function createConsentHandler(provider: CosenseOAuthProvider): RequestHandler {
   return (req: Request, res: Response) => {
     res.setHeader('Cache-Control', 'no-store');
-    const body = req.body as {
-      pending_id?: unknown;
-      passphrase?: unknown;
-      sid?: unknown;
-      invite_code?: unknown;
-      action?: unknown;
-    };
+    const body = req.body as Record<string, unknown>;
     const pendingId = typeof body.pending_id === 'string' ? body.pending_id : '';
-    const passphrase = typeof body.passphrase === 'string' ? body.passphrase : '';
-    // SID はここから先、暗号化されるまでしか平文で存在しない。ログに落とさないこと。
-    const sid = typeof body.sid === 'string' ? body.sid : '';
-    const inviteCode = typeof body.invite_code === 'string' ? body.invite_code : '';
+    // 文字列の欄はすべて認証に渡す（画面を差し替えて欄を増やしても受け取れるように）。
+    // 値は認証が終わるまでの入力なので、ログには落とさないこと。
+    const submission: ConsentSubmission = { passphrase: '' };
+    for (const [name, value] of Object.entries(body)) {
+      if (typeof value === 'string' && !RESERVED_FIELDS.has(name)) Object.assign(submission, { [name]: value });
+    }
 
     try {
       if (body.action === 'deny') {
@@ -100,7 +101,7 @@ function createConsentHandler(provider: CosenseOAuthProvider): RequestHandler {
         return;
       }
       // ネットワーク的な同一性しか手掛かりがないので、レート制限のキーは接続元 IP。
-      const redirectTo = provider.approve(pendingId, { passphrase, sid, inviteCode }, req.ip ?? 'unknown');
+      const redirectTo = provider.approve(pendingId, submission, req.ip ?? 'unknown');
       console.error(`[oauth] consent approved (pending=${pendingId.slice(0, 8)})`);
       res.redirect(302, redirectTo);
     } catch (error) {

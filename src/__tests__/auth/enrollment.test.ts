@@ -69,7 +69,7 @@ describe('招待からの登録', () => {
 
     const redirect = h.provider.approve(
       pendingId,
-      { passphrase: FRIEND_PASSPHRASE, sid: FRIEND_SID, inviteCode: code },
+      { passphrase: FRIEND_PASSPHRASE, sid: FRIEND_SID, invite_code: code },
       '127.0.0.1'
     );
     // 同意画面を2回通らせない（登録と認可を同じ送信で終わらせる）
@@ -90,13 +90,13 @@ describe('招待からの登録', () => {
 
     h.provider.approve(
       await beginConsent(h),
-      { passphrase: FRIEND_PASSPHRASE, sid: FRIEND_SID, inviteCode: code },
+      { passphrase: FRIEND_PASSPHRASE, sid: FRIEND_SID, invite_code: code },
       '127.0.0.1'
     );
 
     const second = await beginConsent(h);
     expect(() =>
-      h.provider.approve(second, { passphrase: 'another-passphrase-9', sid: FRIEND_SID, inviteCode: code }, '127.0.0.2')
+      h.provider.approve(second, { passphrase: 'another-passphrase-9', sid: FRIEND_SID, invite_code: code }, '127.0.0.2')
     ).toThrow(/not valid, has expired, or has already been used/);
   });
 
@@ -106,7 +106,7 @@ describe('招待からの登録', () => {
     const pendingId = await beginConsent(h);
 
     const submit = (patch: Record<string, string>) =>
-      h.provider.approve(pendingId, { passphrase: FRIEND_PASSPHRASE, sid: FRIEND_SID, inviteCode: code, ...patch }, '127.0.0.1');
+      h.provider.approve(pendingId, { passphrase: FRIEND_PASSPHRASE, sid: FRIEND_SID, invite_code: code, ...patch }, '127.0.0.1');
 
     expect(() => submit({ passphrase: 'short' })).toThrow(/at least 12 characters/);
     expect(() => submit({ sid: '' })).toThrow(/Paste your own Cosense SID/);
@@ -122,7 +122,7 @@ describe('招待からの登録', () => {
     const h = harness();
     const pendingId = await beginConsent(h);
     expect(() =>
-      h.provider.approve(pendingId, { passphrase: FRIEND_PASSPHRASE, sid: FRIEND_SID, inviteCode: 'aaa-bbb-ccc' }, '127.0.0.1')
+      h.provider.approve(pendingId, { passphrase: FRIEND_PASSPHRASE, sid: FRIEND_SID, invite_code: 'aaa-bbb-ccc' }, '127.0.0.1')
     ).toThrow(ConsentError);
     expect(h.config.users.size).toBe(1);
   });
@@ -141,7 +141,7 @@ describe('招待からの登録', () => {
 
     const pendingId = /name="pending_id" value="([^"]+)"/.exec(res.body)![1]!;
     expect(() =>
-      h.provider.approve(pendingId, { passphrase: FRIEND_PASSPHRASE, sid: FRIEND_SID, inviteCode: 'aaa-bbb-ccc' }, '127.0.0.1')
+      h.provider.approve(pendingId, { passphrase: FRIEND_PASSPHRASE, sid: FRIEND_SID, invite_code: 'aaa-bbb-ccc' }, '127.0.0.1')
     ).toThrow(/does not accept invite codes/);
   });
 
@@ -150,7 +150,7 @@ describe('招待からの登録', () => {
     const { code } = h.config.invites!.create({ userId: 'friend', projects: ['shared'], enableDelete: false });
     h.provider.approve(
       await beginConsent(h),
-      { passphrase: FRIEND_PASSPHRASE, sid: FRIEND_SID, inviteCode: code },
+      { passphrase: FRIEND_PASSPHRASE, sid: FRIEND_SID, invite_code: code },
       '127.0.0.1'
     );
 

@@ -14,6 +14,8 @@
 import { UserDirectory } from './users.js';
 import { UserStore } from './user-store.js';
 import { InviteStore } from './invites.js';
+import { UserDirectoryAuthenticator } from './directory-authenticator.js';
+import type { ConsentAuthenticator } from './authenticator.js';
 
 /** アクセストークンの有効期間（秒）。 */
 const DEFAULT_ACCESS_TOKEN_TTL_SEC = 60 * 60;
@@ -41,6 +43,8 @@ export interface OAuthConfig {
    * `MCP_USERS_FILE` が無ければ、環境変数のパスフレーズを持つ利用者が1人だけ入っている。
    */
   users: UserDirectory;
+  /** 同意画面の入力を判定する。ここでは `users` と `invites` を引く実装を入れている。 */
+  authenticator: ConsentAuthenticator;
   /**
    * 招待の保存先。書き込めるユーザーストア（`MCP_USERS_STORE`）があるときだけ有効。
    * 未設定なら招待は使えず、利用者は静的な設定でしか増やせない。
@@ -139,6 +143,7 @@ export function resolveOAuthConfig(env: NodeJS.ProcessEnv = process.env): OAuthC
     issuerUrl,
     resourceUrl,
     users,
+    authenticator: new UserDirectoryAuthenticator(users, invites),
     ...(invites ? { invites } : {}),
     ...(storePath ? { storePath } : {}),
     accessTokenTtlSec: parsePositiveInt(env.MCP_OAUTH_ACCESS_TTL, DEFAULT_ACCESS_TOKEN_TTL_SEC, 'MCP_OAUTH_ACCESS_TTL'),
