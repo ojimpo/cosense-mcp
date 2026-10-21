@@ -332,6 +332,13 @@ upstream に入れるのは「各自が自分の資格情報で自分用サー�
   フォークは `directory-authenticator.ts`（利用者ディレクトリ + 招待）に差し替える。目的はフォークの維持コスト:
   `provider.ts` を直接改造せずに済ませ、upstream 取り込み時の衝突を減らす。**同意フォームの欄は欄名のまま
   `submission` に入る**（`sid`、`invite_code`）ので、フォームを変えても `auth/index.ts` は触らない
+- **`security-scan` は単語だけで落ちる。** `.github/workflows/security-scan.yml` は `src/` に
+  `password` / `access_token` などの単語があるだけで失敗する（OAuth の実装は必ず当たる）。PR 81 では検査を
+  「秘密らしい名前への文字列リテラルの代入」だけに絞る別コミット（`8f2d9df`）を足した。**PR 81 を取り込むと、
+  このコミットも一緒に入る。** 外して取り込むと、このワークフローが走る環境では `pages.ts` / `provider.ts` の
+  3行で落ちる。なお**フォーク（ojimpo/cosense-mcp）の CI は実行履歴が0件**（ワークフローは active、理由は未確定）で、
+  フォーク側で落ちるかは未確認。ワークフローの `run` を直すときは、YAML から取り出して `bash -e` で流して
+  確かめる（引用符を16進で書いてあるのは、シェルのクォートと衝突させないため）
 - **フォークを PR 81 の上に載せ替える試験を済ませてある（`trial/fork-on-oauth`、未マージ）。** PR 81 を
   フォークの `main` にマージし、フォーク側のテスト 587 件が通ることと、同意画面の見た目を確認した。
   フォーク固有の差分は `provider.ts` +79、`store.ts` +107（SID の封筒暗号。差し込み口を足すと upstream に

@@ -64,6 +64,14 @@
   - **未着手:** レビュー対応。マージされたら `trial/fork-on-oauth` をそのまま入れず、実際のマージ結果から取り込み直す（squash でコミットが変わると `auth/` がまた add/add になる）
   - **フォークの本番に PR 81 は入っていない。** 本番は14:36時点の v0.13.0 取り込み版
 
+- **16:15 `security-scan` が PR 81 で落ちる → 検査を「リテラルの代入」だけに絞る** — [ojimpo.icon]「なんかSecrity Scanが落ちてる？」 → 「案Bで」 `8f2d9df`（`feat/oauth-2.1`）
+  - 15:20 の PR 提出直後から赤かった [確]（`quality-check` は通っていた）。原因は `.github/workflows/security-scan.yml` の2つ目のステップで、`src/` に `password`・`access_token` などの**単語が出てくるだけで落ちる grep**。OAuth の実装には必ず出る。当たったのは `pages.ts:103`（説明文の「password manager」）、`pages.ts:105`（`type="password"`）、`provider.ts:390`（`access_token: accessToken`）の3行で、秘密のハードコードではなかった
+  - 候補: **A** ソースを避ける（`access_token` は仕様が決めたフィールド名で、`type="password"` は HTML の仕様。避けると `"pass" + "word"` のような不自然なコードになるので却下）／**B** grep を「秘密らしい名前への文字列リテラルの代入」だけに絞る／**C** PR は触らず worldnine に伝える。B を推奨し、upstream のセキュリティ検査の判定を変える提案なので push する前にあなたの確認を取った
+  - B の実装: 引用符を16進（`\x22` `\x27` `\x60`）で書いた。シェルのクォートとの衝突を避けるため。**初版の正規表現は型注釈つきの `api_key: string = '...'` を拾えなかった**ので、`(\s*:\s*[A-Za-z<>\[\]| ]+)?` を足した。YAML から実際の `run` を取り出して `bash -e` で流し、現在のコードは通る・本物の秘密を埋めたファイルを足すと落ちる、を両方確認した [確]
+  - **判断の分かれ目:** 検査を緩める変更を、PR を通すために入れたように見えると良くない。そのため**別コミットにして**（worldnine がそこだけ外せる）、PR にコメントで「何が当たったか、何を拾い何を拾わなくなるか、外してよい」を書いた
+  - 検査が拾わなくなるもの: 変数の代入（`access_token: accessToken`）、`type="password"`。拾い続けるもの: `password = "..."`、`api_key: string = '...'`、`{ access_token: "..." }`。**元の検査も `\b` 区切りなので、`secret_value = "..."` のような名前は元から拾えていない**（挙動は変わっていない）
+  - 再実行の結果は `security-scan`・`quality-check` とも pass [確]。**フォーク（ojimpo/cosense-mcp）の CI は実行履歴が0件**（ワークフローは5本とも active なのに、今日 `main` へ何度 push しても1回も走っていない [確]）。理由は**未確定**。そのため、PR 81 を取り込んだときにフォーク側でも同じ誤検知が出るのかは、確かめられていない。ただし `main` のコードには同じ3行がすでに入っている
+
 ## 2026-10-19
 
 - **10:48 upstream が #78（PR 3、`TRANSPORT=http`）をマージ** — worldnine の `gh` 上の時刻から。`e5510c3`
