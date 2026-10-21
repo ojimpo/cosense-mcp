@@ -29,6 +29,10 @@ services:
       # 再起動のたびに再認可させないため、コンテナ外に置く
       - MCP_OAUTH_STORE=/data/oauth-store.json
       - MCP_TRUST_PROXY=${MCP_TRUST_PROXY:-1}
+      # Host ヘッダの許可リスト（DNS リバインディング対策）。0.0.0.0 で待ち受けるので必須級——
+      # 無いと SDK が起動時に警告する。トンネル越しの Host は公開ホスト名になる。
+      # ローカルから curl で確かめるための localhost も入れてある
+      - MCP_ALLOWED_HOSTS=${MCP_ALLOWED_HOSTS:-cosense-mcp.ojimpo.com,localhost,127.0.0.1}
       - MCP_ALLOW_UNAUTHENTICATED=${MCP_ALLOW_UNAUTHENTICATED:-false}
       # 設定するとOrigin検証がenforceになる（未設定はreport＝ログのみ）
       - MCP_ALLOWED_ORIGINS=${MCP_ALLOWED_ORIGINS:-}
