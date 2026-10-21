@@ -76,7 +76,10 @@
   - 事実 [確]: ワークフロー5本とも `active`、Actions は有効（`allowed_actions: all`）、`main` への push は `PushEvent` として記録されている。それなのに**実行履歴が0件**で、`main` の最新コミットのチェックスイートには vercel・claude・cloudflare の3つだけがあり、GitHub Actions のものが無い
   - **Actions 自体は動く。** 使い捨てブランチに新しいワークフローを置いて push したら走って成功した（調べたあと、ブランチも実行履歴も消した）
   - **`develop` への push では `Security Scan` が走った**（同じコミット、`on.push.branches` に `develop` がある）。つまり既存のワークフローも動く。**`main` への push だけが走っていない**。理由は**未確定**
-  - 次: `main` へ push して、`Security Scan` が走るかを見る（この commit がその確認）
+  - **`main` へ push したら、今度は `Security Scan` が走った** [確]（`b63d8cf`。チェックスイートに `github-actions` が加わった）。**以前は走らなかった理由は未確定。** 仮説: フォークは既定でワークフローが止まっていて、API は `active` と返すのに実際には走らない状態だった。使い捨てブランチへの push で新しいワークフローが動いたのを境に、動くようになった。ただし、これを確かめる手段（フォーク側の「有効化」ボタンの状態を返す API）は見つからなかったので、仮説のまま
+  - **走った `Security Scan` は `main` で失敗した。** PR 81 の3行に加えて、フォーク固有の `users.ts`・`sid-crypto.ts`（`secret` という引数名・変数名）・`admin-pages.ts`・`consent` 画面にも当たった [確]。**単語だけの検査は、秘密の暗号化を扱うコードほど当たる**
+  - 対応: PR 81 に足した検査の絞り込みのコミットを、フォークの `main` にも cherry-pick した（`92a913e` = `8f2d9df` と同じ内容。PR 81 がマージされてフォークに取り込むときは、同じ変更なので衝突しない見込み）。**`main` の `Security Scan` は成功した** [確]
+  - **残る穴:** `pr.yml`（テスト・lint・ビルド）は `pull_request` でしか動かない。フォークには PR が無いので、**`main` への push では、秘密検査以外は自動では走らない**。テストはローカルで回している。これは設定どおりで、直すなら別の判断（フォークの `main` への push でも `pr.yml` を回すか）
 
 ## 2026-10-19
 
