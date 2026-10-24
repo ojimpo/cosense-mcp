@@ -147,6 +147,15 @@ HTTP。経路は Tailscale（WireGuard）なので盗聴の心配は無く、セ
 **NPM の :80 は 0.0.0.0 に公開されている**ので、LAN上の機器からも届く（他の27サービスと同条件）。
 インターネットからは届かない。管理画面はパスフレーズで守られるが、LANに出ている点は認識しておく。
 
+##### docker0 の IP が変わると、コンテナが「Up」のまま 502 になる（2026-10-24）
+
+`MCP_ADMIN_BIND` は docker0 のアドレスそのもの。`/etc/docker/daemon.json` の `default-address-pools` を
+変えて docker を再起動すると docker0 が別のサブネットに移り（2026-10-24 は `172.17.0.1` → `10.200.0.1`）、
+旧アドレスへのバインドが失敗する。**コンテナはネットワーク無しで `Up` と表示され続け、ホストのポートが
+待ち受けないので、Tunnel が 502 を返す**。コードの不具合ではない。
+切り分けは `ss -ltn | grep :4100` と `docker inspect -f '{{json .NetworkSettings.Networks}}'`（`{}` なら異常）。
+`ip -br addr show docker0` の IP を `.env` の `MCP_ADMIN_BIND` に合わせて `docker compose up -d --force-recreate`。
+
 ##### `tailscale serve` を使うなら、先に Funnel を確認する
 
 arigato-nas は `:443` と `:8443` の両方が **Funnel オン**（`/spotify-liked` 等を公開中）。
