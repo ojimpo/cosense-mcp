@@ -539,8 +539,24 @@ function createServer(session: SessionConfig = defaultSession(sessionDefaults())
         },
       ];
 
-
-    return { tools };
+    // annotations が無いと、MCP 仕様の既定（readOnlyHint=false, destructiveHint=true）で
+    // 全ツールが「破壊的な書き込み」扱いになり、ChatGPT は呼ぶたびに確認を出す。
+    // 実態に合わせて宣言する。外部に副作用を出すのは Cosense だけなので openWorldHint は false
+    const readOnly = new Set(["get_notation_guide", "get_page_url", "get_page", "list_pages", "search_pages", "get_smart_context"]);
+    const destructive = new Set(["delete_page", "rewrite_page", "delete_lines", "replace_lines"]);
+    return {
+      tools: tools.map((tool) => {
+        const base = tool.name.replace(new RegExp(`_${TOOL_SUFFIX}$`), "");
+        return {
+          ...tool,
+          annotations: {
+            readOnlyHint: readOnly.has(base),
+            ...(readOnly.has(base) ? {} : { destructiveHint: destructive.has(base) }),
+            openWorldHint: false,
+          },
+        };
+      }),
+    };
   });
 
   // ルートのセットアップ
