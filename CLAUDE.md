@@ -80,6 +80,9 @@ Claude.aiの`static_headers`はbeta。両方から使う前提なら OAuth 一�
   一度だけ取ったページ一覧なので、そのまま返すとその接続が触れないプロジェクトの一覧が漏れる
 - **許可リストは柵であると同時にメニュー。** `describeProjectName`（`src/session.ts`）が
   ツールスキーマに候補を書く。ここを固定にすると、友人のクライアントに運用者のプロジェクト名が並ぶ
+- **`tools/list` で `annotations`（`readOnlyHint` / `destructiveHint`）を宣言している**（`src/index.ts` の `ListTools` 末尾、ツール名で振り分け）。
+  未宣言だと MCP 仕様の既定で全ツールが「破壊的な書き込み」扱いになり、ChatGPT が呼ぶたびに確認ダイアログを出して止まる。
+  ツールを足すときは `readOnly` / `destructive` の集合に入れること。ChatGPT が書き込みの確認を出さなくなるかは未確認
 - 破壊的ツールは `tools/list` に出さない側を先に効かせる。実行時ゲートもあるが、見えていると
   クライアントは「使える」と判断して提案してくる
 - **パスフレーズ＝IDなので、重複は二重に弾く。** 起動時（`assertDistinctPassphrases`）で
@@ -147,14 +150,19 @@ HTTP。経路は Tailscale（WireGuard）なので盗聴の心配は無く、セ
 **NPM の :80 は 0.0.0.0 に公開されている**ので、LAN上の機器からも届く（他の27サービスと同条件）。
 インターネットからは届かない。管理画面はパスフレーズで守られるが、LANに出ている点は認識しておく。
 
-##### docker0 の IP が変わると、コンテナが「Up」のまま 502 になる（2026-10-24）
+##### docker0 の IP が変わると、コンテナが「Up」のまま 502 になる（2026-10-24、恒久対策済み）
 
-`MCP_ADMIN_BIND` は docker0 のアドレスそのもの。`/etc/docker/daemon.json` の `default-address-pools` を
-変えて docker を再起動すると docker0 が別のサブネットに移り（2026-10-24 は `172.17.0.1` → `10.200.0.1`）、
-旧アドレスへのバインドが失敗する。**コンテナはネットワーク無しで `Up` と表示され続け、ホストのポートが
-待ち受けないので、Tunnel が 502 を返す**。コードの不具合ではない。
+`MCP_ADMIN_BIND` は docker0 のアドレスそのもの。2026-10-24 に `/etc/docker/daemon.json` へ
+`default-address-pools` を足して docker を再起動したところ、docker0 が `172.17.0.1` → `10.200.0.1` に移り、
+旧アドレスへのバインドが失敗した。**コンテナはネットワーク無しで `Up` と表示され続け、ホストのポートが
+待ち受けないので、Tunnel が 502 を返す**。コードの不具合ではない。NPM の転送先（39件）も同じ理由で全滅した。
+
+**恒久対策: `daemon.json` に `"bip": "172.17.0.1/16"` を入れて docker0 を固定した。** `default-address-pools` は
+ユーザー定義ネットワーク用で、docker0 の IP は決めない。`bip` が無いと、プールを足しただけで docker0 まで動く。
+**`daemon.json` を触るときは `bip` を消さない。**
+
 切り分けは `ss -ltn | grep :4100` と `docker inspect -f '{{json .NetworkSettings.Networks}}'`（`{}` なら異常）。
-`ip -br addr show docker0` の IP を `.env` の `MCP_ADMIN_BIND` に合わせて `docker compose up -d --force-recreate`。
+`ip -br addr show docker0` の IP が `.env` の `MCP_ADMIN_BIND` と NPM の転送先に一致しているかを見る。
 
 ##### `tailscale serve` を使うなら、先に Funnel を確認する
 

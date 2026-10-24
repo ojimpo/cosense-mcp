@@ -15,7 +15,9 @@
   - 本当の原因: 11:47 に `/etc/docker/daemon.json` へ `default-address-pools: 10.200.0.0/16` が入り、11:48 に docker が再起動。docker0 が `172.17.0.1` → `10.200.0.1` に変わった
   - `.env` の `MCP_ADMIN_BIND=172.17.0.1` が存在しないアドレスになり、バインド失敗。コンテナは **ネットワーク無し（`NetworkSettings.Networks = {}`）のまま `Up` 表示**で、ホストの 4100 / 4103 が待ち受けず Tunnel が 502 を返していた
   - 対応: `MCP_ADMIN_BIND=10.200.0.1` にして `docker compose up -d --force-recreate`（`-v` なし）。公開 URL は 401、メタデータは 200 に復旧。ユーザーが ChatGPT で動作を確認
-  - 未解決: NPM の `*.arigato-nas` 27本も `172.17.0.1` 宛なので同じく壊れているはず（`nginx.arigato-nas` が 504 `[確]`）。daemon.json を戻すか NPM を張り替えるかはユーザー判断
+  - 恒久対策（同日）: `daemon.json` に `"bip": "172.17.0.1/16"` を足して docker を再起動、docker0 を元に戻した。`.env` と NPM の転送先（DB と nginx 設定を直接書き換え。バックアップは `~/docker/npm/backup-20261024/`）も `172.17.0.1` に戻した `[確]`
+  - ChatGPT の書き込み確認ダイアログは、ツールに `annotations` が無く全部「破壊的」扱いだったため。宣言を足した。ダイアログが消えるかは未確認
+  - 当時の未解決（上の対策で解消）: NPM の `*.arigato-nas` 27本も `172.17.0.1` 宛なので同じく壊れているはず（`nginx.arigato-nas` が 504 `[確]`）。daemon.json を戻すか NPM を張り替えるかはユーザー判断
   - 未説明: ChatGPT のエラーが 502 ではなく -32603 だった理由
 
 ## 2026-10-21
