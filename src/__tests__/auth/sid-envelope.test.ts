@@ -215,6 +215,21 @@ describe('SIDの封筒暗号', () => {
   });
 });
 
+describe('交換後の再承認', () => {
+  it('交換後に入れ直したSIDは新しいコードに反映される', async () => {
+    const h = harness();
+    const pendingId = await beginConsent(h);
+    const first = codeFrom(h.provider.approve(pendingId, { passphrase: FRIEND_PASSPHRASE, sid: 'old-sid' }, '127.0.0.1'));
+    const resource = new URL(`${BASE}/mcp`);
+    await h.provider.exchangeAuthorizationCode(h.client, first, 'verifier', REDIRECT_URI, resource);
+
+    const second = codeFrom(h.provider.approve(pendingId, { passphrase: FRIEND_PASSPHRASE, sid: FRIEND_SID }, '127.0.0.1'));
+    expect(second).not.toBe(first);
+    const tokens = await h.provider.exchangeAuthorizationCode(h.client, second, 'verifier', REDIRECT_URI, resource);
+    expect((await h.provider.verifyAccessToken(tokens.access_token)).extra?.cosenseSid).toBe(FRIEND_SID);
+  });
+});
+
 describe('sid-crypto', () => {
   it('違う秘密では開けない', () => {
     const dek = generateDek();
